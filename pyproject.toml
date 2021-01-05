@@ -8,6 +8,8 @@ authors = ["Ross Hemsley <rlhemsley@gmail.com>"]
 python = "^3.8.1"
 torch = "^1.7.1"
 pytorch-lightning = "^1.1.2"
+click = "^7.1.2"
+omegaconf = "^2.0.5"
 
 [tool.poetry.dev-dependencies]
 pytest = "^4.6"
