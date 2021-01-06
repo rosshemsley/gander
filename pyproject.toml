@@ -1,3 +1,6 @@
+[tool.poetry.scripts]
+train = "gander.cli.train.__main__:main"
+
 [tool.poetry]
 name = "gander"
 version = "0.1.0"
@@ -10,6 +13,7 @@ torch = "^1.7.1"
 pytorch-lightning = "^1.1.2"
 click = "^7.1.2"
 omegaconf = "^2.0.5"
+torchvision = "^0.8.2"
 
 [tool.poetry.dev-dependencies]
 pytest = "^4.6"
