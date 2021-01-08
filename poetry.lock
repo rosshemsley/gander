@@ -401,6 +401,18 @@ pyasn1 = ">=0.1.3"
 
 [[package]]
 category = "main"
+description = ""
+name = "shapecheck"
+optional = false
+python-versions = "^3.7"
+version = "0.1.0"
+
+[package.source]
+reference = "40ee56c091a1ed5b0c9fbe7636ce067d9e93e033"
+type = "git"
+url = "https://github.com/rosshemsley/shapecheck"
+[[package]]
+category = "main"
 description = "Python 2 and 3 compatibility utilities"
 name = "six"
 optional = false
@@ -535,7 +547,7 @@ version = "0.36.2"
 test = ["pytest (>=3.0.0)", "pytest-cov"]
 
 [metadata]
-content-hash = "46d1e334e0e25d94da9d55f5dba8ff85f3ff3d647db9dacec352039229576fd5"
+content-hash = "2699a03e4373cac4b1080069b7b31984d126db8d1847ff4e16656614fb176988"
 python-versions = "^3.8.1"
 
 [metadata.files]
@@ -820,6 +832,7 @@ rsa = [
     {file = "rsa-4.6-py3-none-any.whl", hash = "sha256:6166864e23d6b5195a5cfed6cd9fed0fe774e226d8f854fcb23b7bbef0350233"},
     {file = "rsa-4.6.tar.gz", hash = "sha256:109ea5a66744dd859bf16fe904b8d8b627adafb9408753161e766a92e7d681fa"},
 ]
+shapecheck = []
 six = [
     {file = "six-1.15.0-py2.py3-none-any.whl", hash = "sha256:8b74bedcbbbaca38ff6d7491d76f2b06b3592611af620f8426e82dddb04a5ced"},
     {file = "six-1.15.0.tar.gz", hash = "sha256:30639c035cdb23534cd4aa2dd52c3bf48f06e5f4a941509c8bafd8ce11080259"},

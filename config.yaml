@@ -1,0 +1,15 @@
+model:
+  latent_dims: 512
+  first_layer_size: [4, 4]
+  epochs_per_layer: 10
+  min_layers: 0
+  num_layers: 5
+  conv_channels: 128
+  fc_layers: 512
+
+trainer:
+  num_dataloaders: 16
+  batch_size: 95
+
+test:
+  config: 2

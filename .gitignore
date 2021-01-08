@@ -8,6 +8,7 @@ __pycache__/
 
 # Distribution / packaging
 .Python
+lightning_logs/
 build/
 develop-eggs/
 dist/

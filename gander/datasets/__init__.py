@@ -1,1 +1,1 @@
-from .celeba import CelebA
+from .celeba import CelebA, denormalize
