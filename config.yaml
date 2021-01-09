@@ -7,10 +7,10 @@ model:
 
   training_stages:
     - num_layers: 0
-      epochs: 2
+      epochs: 1
       batch_size: 512
     - num_layers: 1
-      epochs: 2
+      epochs: 5
       batch_size: 512
     - num_layers: 2
       epochs: 5

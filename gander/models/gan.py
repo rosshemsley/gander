@@ -276,8 +276,8 @@ class GAN(pl.LightningModule):
 
     def configure_optimizers(self):
         return [
-            torch.optim.Adam(self.generator.parameters(), lr=1e-3),
-            torch.optim.Adam(self.descriminator.parameters(), lr=1e-3),
+            torch.optim.Adam(self.generator.parameters(), lr=1e-4),
+            torch.optim.Adam(self.descriminator.parameters(), lr=1e-4),
         ]
 
 def _layer(in_channels: int, out_channels: int) -> nn.Module:
