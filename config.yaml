@@ -5,32 +5,29 @@ model:
   fc_layers: 512
   num_layers: 6
 
-  training_stages:
-    - num_layers: 0
-      epochs: 1
-      batch_size: 512
-    - num_layers: 1
-      epochs: 5
-      batch_size: 512
-    - num_layers: 2
-      epochs: 5
-      batch_size: 256
-    - num_layers: 3
-      epochs: 3
-      batch_size: 128
-    - num_layers: 4
-      epochs: 1
-      batch_size: 16
-    - num_layers: 5
-      epochs: 1
-      batch_size: 8
-    - num_layers: 6
-      epochs: 1
-      batch_size: 2
-
 trainer:
   num_dataloaders: 16
-  batch_size: 95
+  learning_rate: 1e-4
 
-test:
-  config: 2
+training_stages:
+  - num_layers: 0
+    epochs: 1
+    batch_size: 512
+  - num_layers: 1
+    epochs: 5
+    batch_size: 512
+  - num_layers: 2
+    epochs: 10
+    batch_size: 256
+  - num_layers: 3
+    epochs: 10
+    batch_size: 128
+  - num_layers: 4
+    epochs: 10
+    batch_size: 16
+  - num_layers: 5
+    epochs: 10
+    batch_size: 8
+  - num_layers: 6
+    epochs: 10
+    batch_size: 2

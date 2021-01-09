@@ -24,7 +24,6 @@ def main(root_dir: str):
         gpus=1,
         max_epochs=100000,
         gradient_clip_val=0.5,
-        # precision=16,
         callbacks=[stage_manager],
         reload_dataloaders_every_epoch=True,
     )

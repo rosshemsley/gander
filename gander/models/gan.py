@@ -4,53 +4,13 @@ import torch
 import pytorch_lightning as pl
 import torchvision
 
-from dataclasses import dataclass
 from gander.datasets import CelebA, denormalize
 from torch.utils.data import DataLoader
 
+from .stage_manager import Stage
+
 DES_STEP_COUNT = 0
 GEN_STEP_COUNT = 0
-
-@dataclass
-class Stage:
-    epochs: int
-    batch_size: int 
-    num_layers: int
-    progress: float
-
-class StageManager(pl.Callback):
-    def __init__(self, conf):
-        self.conf = conf
-        self.index = 0
-        self.current_epoch = 0
-        self.current_step = 0
-
-    def setup(self, trainer, module, _):
-        cfg = self.conf.model.training_stages[self.index]
-        stage = Stage(
-            progress=0,
-            **cfg,
-        )
-        self.current_stage = stage
-        module.set_current_stage(stage)
-
-    def on_epoch_end(self, trainer, module):
-        self.current_epoch += 1
-        if self.current_epoch == self.current_stage.epochs:
-            self.current_epoch = 0
-            self.current_step = 0
-            self.index = min(self.index+1, len(self.conf.model.training_stages)-1)
-            cfg = self.conf.model.training_stages[self.index]
-            stage = Stage(
-                progress=0,
-                **cfg,
-            )
-            self.current_stage = stage
-            module.set_current_stage(stage)
-
-    def on_batch_end(self, trainer, module):
-         self.current_stage.progress = self.current_step / (self.current_stage.epochs * trainer.num_training_batches)
-         self.current_step += 1
 
 class Generator(nn.Module):
     """
@@ -59,7 +19,6 @@ class Generator(nn.Module):
     """
     def __init__(self, conf):
         super().__init__()
-
         self.conf = conf
 
         latent_dims = conf.model.latent_dims
@@ -93,11 +52,12 @@ class Generator(nn.Module):
             intermediate_layers.append(x)
         
         output_layer_size = intermediate_layers[-1].shape[2:4] 
-        result = torch.zeros(intermediate_layers[-1].shape).type_as(x)
 
-        for l, w in zip(intermediate_layers, weights):
-            # print("resampling", l.shape, "to", output_layer_size)
-            result += w *_resample(l, output_layer_size)
+        result = _sum_layers(weights, intermediate_layers)
+        # result = torch.zeros(intermediate_layers[-1].shape).type_as(x)
+
+        # for l, w in zip(intermediate_layers, weights):
+        #     result += w *_resample(l, output_layer_size)
 
         return self.last_layer(result)
 
@@ -131,26 +91,22 @@ class Descriminator(nn.Module):
             x = _half_resolution(x)
             intermediate_layers.append(x)
         
-        result = torch.zeros(intermediate_layers[-1].shape).type_as(x)
-        for w, l in zip(weights, intermediate_layers):
-            result += w*_resample(l, intermediate_layers[-1].shape[2:4])
+        result = _sum_layers(weights, intermediate_layers)
+        # result = torch.zeros(intermediate_layers[-1].shape).type_as(x)
+        # for w, l in zip(weights, intermediate_layers):
+        #     result += w * _resample(l, intermediate_layers[-1].shape[2:4])
 
         return self.classifier(result)
 
 
 class Classifier(nn.Module):
-    """
-    TODO(Ross): Can we use LogSigmoid instead?
-    """
     def __init__(self, conf):
         super().__init__()
 
-        # The classifier is fully connected layer followed by a logistic binary classifier.
         resolution = conf.model.first_layer_size
         channels = conf.model.conv_channels
         fc_layers = conf.model.fc_layers
 
-        # print("classifier expects", resolution)
         self.classifier = nn.Sequential(
             nn.Linear(resolution[0] * resolution[1] * channels, fc_layers),
             nn.LeakyReLU(),
@@ -160,7 +116,6 @@ class Classifier(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = x.view(x.shape[0], -1)
-        # print("SHAPE in classifier", x.shape)
         return self.classifier(x).clamp(min=1e-5, max = 1 - 1e-5)
 
 
@@ -172,11 +127,10 @@ class GAN(pl.LightningModule):
         self.generator = Generator(conf)
         self.descriminator = Descriminator(conf)
 
-        # Used during training to set the current training stage
         self.stage = None
     
     def set_current_stage(self, stage: Stage):
-        print("Entering new training stage", stage)
+        print("Setting training stage", stage)
         self.stage = stage
 
     def prepare_data(self):
@@ -197,7 +151,7 @@ class GAN(pl.LightningModule):
 
     def forward(self, latent_vectors):
         # TODO
-        return self.generator(latent_vectors, max_layers)
+        ...
 
     def descriminator_step(self, batch, batch_idx):
         layers = self.stage.num_layers
@@ -275,9 +229,10 @@ class GAN(pl.LightningModule):
             return self.descriminator_step(x, batch_idx)
 
     def configure_optimizers(self):
+        lr = self.conf.trainer.learning_rate
         return [
-            torch.optim.Adam(self.generator.parameters(), lr=1e-4),
-            torch.optim.Adam(self.descriminator.parameters(), lr=1e-4),
+            torch.optim.Adam(self.generator.parameters(), lr=lr),
+            torch.optim.Adam(self.descriminator.parameters(), lr=lr),
         ]
 
 def _layer(in_channels: int, out_channels: int) -> nn.Module:
@@ -335,9 +290,22 @@ def _soft_resample(x, alpha, resolution):
     """
 
     r1 = resolution
-    r2 = resolution[0]//2, resolution[1]//2
+    r2 = resolution[0] // 2, resolution[1] // 2
 
     x1 = _resample(_resample(x, r2), r1)
     x2 = _resample(x, r1)
 
     return (1-alpha) * x1 + alpha * x2
+
+def _sum_layers(weights, imgs):
+    """
+    TODO(Ross): A more correct way to average images.
+    See this post: https://sighack.com/post/averaging-rgb-colors-the-right-way
+    """
+    result = torch.zeros(imgs[-1].shape).type_as(imgs[0])
+
+    r = imgs[-1].shape[2:4]
+    for w, l in zip(weights, imgs):
+        result += w * _resample(l, r)
+
+    return result
