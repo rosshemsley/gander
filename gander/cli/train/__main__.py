@@ -3,7 +3,7 @@ import click
 
 from omegaconf import OmegaConf
 import pytorch_lightning as pl
-from gander.models import GAN
+from gander.models import GAN, StageManager
 
 @click.command()
 @click.option(
@@ -19,11 +19,14 @@ def main(root_dir: str):
     print(OmegaConf.to_yaml(conf))
 
     model = GAN(conf)
+    stage_manager = StageManager(conf)
     trainer = pl.Trainer(
         gpus=1,
         max_epochs=100000,
         gradient_clip_val=0.5,
-        precision=16,
+        # precision=16,
+        callbacks=[stage_manager],
+        reload_dataloaders_every_epoch=True,
     )
     trainer.fit(model)
 

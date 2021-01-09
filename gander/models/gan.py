@@ -4,11 +4,53 @@ import torch
 import pytorch_lightning as pl
 import torchvision
 
+from dataclasses import dataclass
 from gander.datasets import CelebA, denormalize
 from torch.utils.data import DataLoader
 
 DES_STEP_COUNT = 0
 GEN_STEP_COUNT = 0
+
+@dataclass
+class Stage:
+    epochs: int
+    batch_size: int 
+    num_layers: int
+    progress: float
+
+class StageManager(pl.Callback):
+    def __init__(self, conf):
+        self.conf = conf
+        self.index = 0
+        self.current_epoch = 0
+        self.current_step = 0
+
+    def setup(self, trainer, module, _):
+        cfg = self.conf.model.training_stages[self.index]
+        stage = Stage(
+            progress=0,
+            **cfg,
+        )
+        self.current_stage = stage
+        module.set_current_stage(stage)
+
+    def on_epoch_end(self, trainer, module):
+        self.current_epoch += 1
+        if self.current_epoch == self.current_stage.epochs:
+            self.current_epoch = 0
+            self.current_step = 0
+            self.index = min(self.index+1, len(self.conf.model.training_stages)-1)
+            cfg = self.conf.model.training_stages[self.index]
+            stage = Stage(
+                progress=0,
+                **cfg,
+            )
+            self.current_stage = stage
+            module.set_current_stage(stage)
+
+    def on_batch_end(self, trainer, module):
+         self.current_stage.progress = self.current_step / (self.current_stage.epochs * trainer.num_training_batches)
+         self.current_step += 1
 
 class Generator(nn.Module):
     """
@@ -119,19 +161,26 @@ class Classifier(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = x.view(x.shape[0], -1)
         # print("SHAPE in classifier", x.shape)
-        return self.classifier(x).clamp(min=1e-7, max = 1 - 1e-7)
+        return self.classifier(x).clamp(min=1e-5, max = 1 - 1e-5)
 
 
 class GAN(pl.LightningModule):
     def __init__(self, conf):
         super().__init__()
         self.conf = conf
-        self.epochs_per_layer = self.conf.model.epochs_per_layer
-        self.max_layers = self.conf.model.min_layers
-        self.all_layers_added = False
 
         self.generator = Generator(conf)
         self.descriminator = Descriminator(conf)
+
+        # Used during training to set the current training stage
+        self.stage = None
+    
+    def set_current_stage(self, stage: Stage):
+        print("Entering new training stage", stage)
+        self.stage = stage
+
+    def prepare_data(self):
+        self.dataset = CelebA(self.conf.root_dir)
 
     def random_latent_vectors(self, n: int):
         """
@@ -141,31 +190,31 @@ class GAN(pl.LightningModule):
         d = self.conf.model.latent_dims
         return torch.normal(torch.zeros(n, d), torch.ones(n, d))
 
-    def train_dataloader(self):
-        dataset = CelebA(self.conf.root_dir)
-
-        batch_size = self.conf.trainer.batch_size
+    def train_dataloader(self, reload_dataloaders_every_epoch=True):
+        batch_size = self.stage.batch_size
         num_workers = self.conf.trainer.num_dataloaders
-        return DataLoader(dataset, shuffle=True, batch_size=batch_size, num_workers=num_workers)
+        return DataLoader(self.dataset, shuffle=True, batch_size=batch_size, num_workers=num_workers)
 
     def forward(self, latent_vectors):
         # TODO
         return self.generator(latent_vectors, max_layers)
 
-    def descriminator_step(self, batch, batch_idx, max_layers):
-        weights = _interpolate_factors(batch_idx, self.trainer.num_training_batches, max_layers+1)
+    def descriminator_step(self, batch, batch_idx):
+        layers = self.stage.num_layers
+        alpha = self.stage.progress
+        weights = _interpolate_factors(alpha, layers+1)
 
-        x = _resample(batch, _image_resolution(self.conf, max_layers))
+        x = _resample(batch, _image_resolution(self.conf, layers))
 
         grid = torchvision.utils.make_grid(denormalize(x[0:16]), nrow=4)
-        if DES_STEP_COUNT % 50 == 1:
+        if DES_STEP_COUNT % 200 == 1:
             self.logger.experiment.add_image("train images", grid, DES_STEP_COUNT)
 
         batch_size = x.size(0)
 
         latent_vectors = self.random_latent_vectors(batch_size).type_as(x)
-        y = self.generator(latent_vectors, max_layers, weights)
-        p_gen = self.descriminator(y, max_layers, weights)
+        y = self.generator(latent_vectors, layers, weights)
+        p_gen = self.descriminator(y, layers, weights)
 
         desciminator_correct_fake = (p_gen < 0.5).sum()
         nll_generated = -torch.log(1 - p_gen)
@@ -173,7 +222,7 @@ class GAN(pl.LightningModule):
         fake_percent_correct = (desciminator_correct_fake / batch_size) * 100
         self.log("fake_percent_correct", fake_percent_correct)
 
-        p_real = self.descriminator(x, max_layers, weights)
+        p_real = self.descriminator(x, layers, weights)
         desciminator_correct_real = (p_real > 0.5).sum()
         nll_real = - torch.log(p_real)
 
@@ -186,58 +235,44 @@ class GAN(pl.LightningModule):
 
         return loss
 
-    def generator_step(self, batch, batch_idx, max_layers):
-        weights = _interpolate_factors(batch_idx, self.trainer.num_training_batches, max_layers+1)
+    def generator_step(self, batch, batch_idx):
+        layers = self.stage.num_layers
+        alpha = self.stage.progress
+        weights = _interpolate_factors(alpha, layers+1)
 
         batch_size = batch.size(0)
         latent_vectors = self.random_latent_vectors(batch_size).type_as(batch)
 
-        y = self.generator(latent_vectors, max_layers, weights)
-        p = self.descriminator(y, max_layers, weights)
+        y = self.generator(latent_vectors, layers, weights)
+        p = self.descriminator(y, layers, weights)
         loss = -torch.log(p).mean()
 
         grid = torchvision.utils.make_grid(denormalize(y[0:16]), nrow=4)
-        if GEN_STEP_COUNT % 50 == 1:
+        if GEN_STEP_COUNT % 200 == 1:
             self.logger.experiment.add_image("generated images", grid, GEN_STEP_COUNT)
 
         self.log("generator_loss", loss)
         return loss
-
-    def on_epoch_end(self):
-        if self.current_epoch % self.epochs_per_layer == self.epochs_per_layer-1:
-            self.max_layers += 1
-            if self.max_layers > self.conf.model.num_layers:
-                self.all_layers_added = True
-
-            self.max_layers = min(self.max_layers, self.conf.model.num_layers)
-            print("max layers is now", self.max_layers)
 
     def training_step(self, batch: Tuple[torch.Tensor, torch.Tensor], batch_idx: int, optimizer_idx: int):
         """
         We alternate between using the batch, and ignoring it.
         Technically, this is inefficient, since we always pay the cost of loading the data.
         """
-        max_layers = self.max_layers
-
         x, _ = batch
 
-        total_steps = self.trainer.num_training_batches * self.epochs_per_layer
-        current_step = batch_idx + (self.current_epoch % self.epochs_per_layer) * self.trainer.num_training_batches
-
-        alpha = min(current_step / total_steps, 1.0)
-        if self.all_layers_added:
-            alpha = 1
-
-        x = _soft_resample(x, alpha, _image_resolution(self.conf, max_layers))
+        alpha = self.stage.progress
+        layers = self.stage.num_layers
+        x = _soft_resample(x, alpha, _image_resolution(self.conf, layers))
 
         if optimizer_idx == 0:
             global GEN_STEP_COUNT
             GEN_STEP_COUNT += 1
-            return self.generator_step(x, batch_idx, max_layers)
+            return self.generator_step(x, batch_idx)
         else:
             global DES_STEP_COUNT
             DES_STEP_COUNT += 1
-            return self.descriminator_step(x, batch_idx, max_layers)
+            return self.descriminator_step(x, batch_idx)
 
     def configure_optimizers(self):
         return [
@@ -278,12 +313,11 @@ def _image_resolution(conf, max_layers) -> Tuple[int, int]:
     factor = pow(2, min(conf.model.num_layers, max_layers))
     return h * factor, w * factor
 
-def _interpolate_factors(batch_idx, total_batches, n):
+def _interpolate_factors(alpha, n):
     if n == 1:
-        # print("weighs", [1.0])
         return [1.0]
 
-    x = (batch_idx / total_batches) * 1/n
+    x = alpha * 1/n
     remainder = 1-x
 
     result = []
@@ -293,7 +327,6 @@ def _interpolate_factors(batch_idx, total_batches, n):
 
     result.append(x)
 
-    # print("weighs", result)
     return result
 
 def _soft_resample(x, alpha, resolution):
