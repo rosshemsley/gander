@@ -23,42 +23,37 @@ class Generator(nn.Module):
 
         latent_dims = conf.model.latent_dims
         channels = conf.model.conv_channels
+        num_groups = conf.model.num_groups
         first_layer_size = conf.model.first_layer_size
 
         self.first_layer = nn.Linear(latent_dims, first_layer_size[0] * first_layer_size[1] * channels)
 
         self.layers = nn.ModuleList([
-            _layer(channels, channels) for _ in range(conf.model.num_layers)
+            Layer(channels, channels, num_groups) for _ in range(conf.model.num_layers)
         ])
 
-        self.last_layer = nn.Sequential(
-            nn.BatchNorm2d(channels),
+        self.to_rgb = nn.Sequential(
+            nn.GroupNorm(num_groups, channels),
             _conv(channels, 3),
             nn.Sigmoid(),
         )
 
-    def forward(self, x: torch.Tensor, max_layers, last_weight) -> torch.Tensor:
-        image_resolution = _image_resolution(self.conf, max_layers)
-        channels = self.conf.model.conv_channels
-        img = torch.zeros((x.size(0), channels, *image_resolution)).type_as(x)
-
+    def forward(self, x: torch.Tensor, num_layers, weight) -> torch.Tensor:
         x = self.first_layer(x)
         x = x.reshape(-1, self.conf.model.conv_channels, *self.conf.model.first_layer_size)
 
-        img += _resample(x, image_resolution)
+        if num_layers == 0:
+            return self.to_rgb(x)
 
-        for i, layer in enumerate(self.layers):
-            if i >= max_layers:
-                break
+        for l in self.layers[:num_layers-1]:
+            x = _double_resolution(x)
+            x = l(x)
 
-            x = layer(_double_resolution(x))
+        x = _double_resolution(x)
+        l = self.layers[num_layers-1]
+        x = (weight) * l(x) + (1-weight) * x
 
-            if i == max_layers - 1:
-                img = img + last_weight * _resample(x, image_resolution)
-            else:
-                img = img + _resample(x, image_resolution)
-
-        return self.last_layer(img)
+        return self.to_rgb(x)
 
 
 class Descriminator(nn.Module):
@@ -68,35 +63,36 @@ class Descriminator(nn.Module):
     """
     def __init__(self, conf):
         super().__init__()
-        self.conf = conf
-        self.channels = conf.model.conv_channels
+        channels = conf.model.conv_channels
+        num_groups = conf.model.num_groups
 
-        self.first_layer = _layer(3, self.channels)
+        self.from_rgb = nn.Sequential(
+            nn.GroupNorm(1, 3),
+            _conv(3, channels),
+            nn.LeakyReLU(),
+        )
+
         self.layers = nn.ModuleList([
-            _layer(self.channels, self.channels) for _ in range(conf.model.num_layers)
+            Layer(channels, channels, num_groups) for _ in range(conf.model.num_layers)
         ])
 
         self.classifier = Classifier(conf)
 
-    def forward(self, x: torch.Tensor, max_layers, last_weight) -> torch.Tensor:
-        image_resolution = list(self.conf.model.first_layer_size)
+    def forward(self, x: torch.Tensor, num_layers, weight) -> torch.Tensor:
+        x = self.from_rgb(x)
 
-        x = self.first_layer(x)
+        if num_layers == 0:
+            return self.classifier(x)
 
-        img = torch.zeros((x.size(0), self.channels, *image_resolution)).type_as(x)
-        img += _resample(x, image_resolution)
-        
-        for i, layer in enumerate(self.layers):
-            if i >= max_layers:
-                break
+        for l in self.layers[:num_layers-1]:
+            x = l(x)
+            x = _half_resolution(x)
 
-            x = layer(_half_resolution(img))
-            if i == max_layers - 1:
-                img = img + last_weight * _resample(x, image_resolution)
-            else:
-                img = img + _resample(x, image_resolution)
+        l = self.layers[num_layers-1]
+        x = (weight) * l(x) + (1-weight) * x
+        x = _half_resolution(x)
 
-        return self.classifier(img)
+        return self.classifier(x)
 
 
 class Classifier(nn.Module):
@@ -233,12 +229,17 @@ class GAN(pl.LightningModule):
             torch.optim.Adam(self.descriminator.parameters(), lr=lr),
         ]
 
-def _layer(in_channels: int, out_channels: int) -> nn.Module:
-    return nn.Sequential(
-        nn.BatchNorm2d(in_channels),
-        _conv(in_channels, out_channels),
-        nn.LeakyReLU(),
-    )
+class Layer(nn.Module):
+    def __init__(self, in_channels, out_channels, num_groups):
+        super().__init__()
+        self.conv = nn.Sequential(
+            nn.GroupNorm(num_groups, in_channels),
+            _conv(in_channels, out_channels),
+            nn.LeakyReLU(),
+        )
+    
+    def forward(self, x):
+        return x + self.conv(x)
 
 # TODO(Ross): think about bias.
 def _conv(in_channels: int, out_channels: int, kernel_size=3, padding=1, stride=1, bias=False):
@@ -247,7 +248,7 @@ def _conv(in_channels: int, out_channels: int, kernel_size=3, padding=1, stride=
 
 def _resample(x: torch.Tensor, size: Tuple[int, int]) -> torch.Tensor:
     # TODO(Ross): check align_corners and interpolation mode.
-    return nn.functional.interpolate(x, size=size, mode="nearest")
+    return nn.functional.interpolate(x, size=size, mode="bilinear")
 
 
 def _double_resolution(x: torch.Tensor) -> torch.Tensor:

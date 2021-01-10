@@ -4,37 +4,38 @@ model:
   conv_channels: 512
   fc_layers: 512
   num_layers: 6
+  num_groups: 8
 
 trainer:
   num_dataloaders: 16
   learning_rate: 1e-4
 
 training_stages:
-  # - num_layers: 0
-  #   epochs: 1
-  #   batch_size: 512
-  #   batches_between_image_log: 5
-  # - num_layers: 1
-  #   epochs: 5
-  #   batch_size: 512
-  #   batches_between_image_log: 5
-  # - num_layers: 2
-  #   epochs: 10
-  #   batch_size: 256
-  #   batches_between_image_log: 5
+  - num_layers: 0
+    epochs: 1
+    batch_size: 512
+    batches_between_image_log: 5
+  - num_layers: 1
+    epochs: 5
+    batch_size: 512
+    batches_between_image_log: 5
+  - num_layers: 2
+    epochs: 20
+    batch_size: 256
+    batches_between_image_log: 5
   - num_layers: 3
-    epochs: 10
+    epochs: 20
     batch_size: 128
     batches_between_image_log: 5
   - num_layers: 4
-    epochs: 10
+    epochs: 20
     batch_size: 16
     batches_between_image_log: 100
   - num_layers: 5
-    epochs: 10
+    epochs: 20
     batch_size: 8
     batches_between_image_log: 1000
   - num_layers: 6
-    epochs: 10
+    epochs: 20
     batches_between_image_log: 5000
     batch_size: 2
