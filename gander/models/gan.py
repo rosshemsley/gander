@@ -37,29 +37,28 @@ class Generator(nn.Module):
             nn.Sigmoid(),
         )
 
-    def forward(self, x: torch.Tensor, max_layers, weights) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, max_layers, last_weight) -> torch.Tensor:
+        image_resolution = _image_resolution(self.conf, max_layers)
+        channels = self.conf.model.conv_channels
+        img = torch.zeros((x.size(0), channels, *image_resolution)).type_as(x)
+
         x = self.first_layer(x)
         x = x.reshape(-1, self.conf.model.conv_channels, *self.conf.model.first_layer_size)
 
-        intermediate_layers = [x]
+        img += _resample(x, image_resolution)
 
         for i, layer in enumerate(self.layers):
             if i >= max_layers:
                 break
 
-            x = _double_resolution(x)
-            x = layer(x)
-            intermediate_layers.append(x)
-        
-        output_layer_size = intermediate_layers[-1].shape[2:4] 
+            x = layer(_double_resolution(x))
 
-        result = _sum_layers(weights, intermediate_layers)
-        # result = torch.zeros(intermediate_layers[-1].shape).type_as(x)
+            if i == max_layers - 1:
+                img = img + last_weight * _resample(x, image_resolution)
+            else:
+                img = img + _resample(x, image_resolution)
 
-        # for l, w in zip(intermediate_layers, weights):
-        #     result += w *_resample(l, output_layer_size)
-
-        return self.last_layer(result)
+        return self.last_layer(img)
 
 
 class Descriminator(nn.Module):
@@ -69,34 +68,35 @@ class Descriminator(nn.Module):
     """
     def __init__(self, conf):
         super().__init__()
-        channels = conf.model.conv_channels
+        self.conf = conf
+        self.channels = conf.model.conv_channels
 
-        self.first_layer = _layer(3, channels)
+        self.first_layer = _layer(3, self.channels)
         self.layers = nn.ModuleList([
-            _layer(channels, channels) for _ in range(conf.model.num_layers)
+            _layer(self.channels, self.channels) for _ in range(conf.model.num_layers)
         ])
 
         self.classifier = Classifier(conf)
 
-    def forward(self, x: torch.Tensor, max_layers, weights) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, max_layers, last_weight) -> torch.Tensor:
+        image_resolution = list(self.conf.model.first_layer_size)
+
         x = self.first_layer(x)
 
-        intermediate_layers = [x]
-
+        img = torch.zeros((x.size(0), self.channels, *image_resolution)).type_as(x)
+        img += _resample(x, image_resolution)
+        
         for i, layer in enumerate(self.layers):
             if i >= max_layers:
                 break
 
-            x = layer(x)
-            x = _half_resolution(x)
-            intermediate_layers.append(x)
-        
-        result = _sum_layers(weights, intermediate_layers)
-        # result = torch.zeros(intermediate_layers[-1].shape).type_as(x)
-        # for w, l in zip(weights, intermediate_layers):
-        #     result += w * _resample(l, intermediate_layers[-1].shape[2:4])
+            x = layer(_half_resolution(img))
+            if i == max_layers - 1:
+                img = img + last_weight * _resample(x, image_resolution)
+            else:
+                img = img + _resample(x, image_resolution)
 
-        return self.classifier(result)
+        return self.classifier(img)
 
 
 class Classifier(nn.Module):
@@ -156,19 +156,18 @@ class GAN(pl.LightningModule):
     def descriminator_step(self, batch, batch_idx):
         layers = self.stage.num_layers
         alpha = self.stage.progress
-        weights = _interpolate_factors(alpha, layers+1)
 
         x = _resample(batch, _image_resolution(self.conf, layers))
 
         grid = torchvision.utils.make_grid(denormalize(x[0:16]), nrow=4)
-        if DES_STEP_COUNT % 200 == 1:
+        if batch_idx % self.stage.batches_between_image_log == 0:
             self.logger.experiment.add_image("train images", grid, DES_STEP_COUNT)
 
         batch_size = x.size(0)
 
         latent_vectors = self.random_latent_vectors(batch_size).type_as(x)
-        y = self.generator(latent_vectors, layers, weights)
-        p_gen = self.descriminator(y, layers, weights)
+        y = self.generator(latent_vectors, layers, alpha)
+        p_gen = self.descriminator(y, layers, alpha)
 
         desciminator_correct_fake = (p_gen < 0.5).sum()
         nll_generated = -torch.log(1 - p_gen)
@@ -176,7 +175,7 @@ class GAN(pl.LightningModule):
         fake_percent_correct = (desciminator_correct_fake / batch_size) * 100
         self.log("fake_percent_correct", fake_percent_correct)
 
-        p_real = self.descriminator(x, layers, weights)
+        p_real = self.descriminator(x, layers, alpha)
         desciminator_correct_real = (p_real > 0.5).sum()
         nll_real = - torch.log(p_real)
 
@@ -192,17 +191,16 @@ class GAN(pl.LightningModule):
     def generator_step(self, batch, batch_idx):
         layers = self.stage.num_layers
         alpha = self.stage.progress
-        weights = _interpolate_factors(alpha, layers+1)
 
         batch_size = batch.size(0)
         latent_vectors = self.random_latent_vectors(batch_size).type_as(batch)
 
-        y = self.generator(latent_vectors, layers, weights)
-        p = self.descriminator(y, layers, weights)
+        y = self.generator(latent_vectors, layers, alpha)
+        p = self.descriminator(y, layers, alpha)
         loss = -torch.log(p).mean()
 
         grid = torchvision.utils.make_grid(denormalize(y[0:16]), nrow=4)
-        if GEN_STEP_COUNT % 200 == 1:
+        if batch_idx % self.stage.batches_between_image_log == 0:
             self.logger.experiment.add_image("generated images", grid, GEN_STEP_COUNT)
 
         self.log("generator_loss", loss)
@@ -242,13 +240,14 @@ def _layer(in_channels: int, out_channels: int) -> nn.Module:
         nn.LeakyReLU(),
     )
 
-def _conv(in_channels: int, out_channels: int, kernel_size=3, padding=1, stride=1):
+# TODO(Ross): think about bias.
+def _conv(in_channels: int, out_channels: int, kernel_size=3, padding=1, stride=1, bias=False):
     return nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size, padding=padding, stride=stride)
 
 
 def _resample(x: torch.Tensor, size: Tuple[int, int]) -> torch.Tensor:
     # TODO(Ross): check align_corners and interpolation mode.
-    return nn.functional.interpolate(x, size=size, mode="bilinear", align_corners=True)
+    return nn.functional.interpolate(x, size=size, mode="nearest")
 
 
 def _double_resolution(x: torch.Tensor) -> torch.Tensor:
@@ -260,12 +259,15 @@ def _half_resolution(x: torch.Tensor) -> torch.Tensor:
     return nn.AvgPool2d(kernel_size=3, stride=2, padding=1)(x)
 
 
-def _image_resolution(conf, max_layers) -> Tuple[int, int]:
+def _image_resolution(conf, max_layers=None) -> Tuple[int, int]:
     """
     The resolution of the laster layer of the generator network
     """
     h, w = conf.model.first_layer_size
-    factor = pow(2, min(conf.model.num_layers, max_layers))
+    n = conf.model.num_layers
+    if max_layers is not None:
+        n = min(max_layers, n)
+    factor = pow(2, n)
     return h * factor, w * factor
 
 def _interpolate_factors(alpha, n):
@@ -296,16 +298,3 @@ def _soft_resample(x, alpha, resolution):
     x2 = _resample(x, r1)
 
     return (1-alpha) * x1 + alpha * x2
-
-def _sum_layers(weights, imgs):
-    """
-    TODO(Ross): A more correct way to average images.
-    See this post: https://sighack.com/post/averaging-rgb-colors-the-right-way
-    """
-    result = torch.zeros(imgs[-1].shape).type_as(imgs[0])
-
-    r = imgs[-1].shape[2:4]
-    for w, l in zip(weights, imgs):
-        result += w * _resample(l, r)
-
-    return result
