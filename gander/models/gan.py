@@ -1,3 +1,15 @@
+"""
+Ideas:
+* Increase fc layers in classifier
+* add std deviation computation to create more diversity
+* implement an evaluation function to support tuning
+* Investigate different learning rates
+* Try half precision
+* Implement a way to look at gradient flow
+* Implement correct model state loading
+* remove batch norm on from_rgb layer
+"""
+
 from typing import Tuple
 import torch.nn as nn
 import torch
@@ -34,7 +46,7 @@ class Generator(nn.Module):
 
         self.to_rgb = nn.Sequential(
             nn.GroupNorm(num_groups, channels),
-            _conv(channels, 3),
+            _conv(in_channels=channels, out_channels=3, kernel_size=1, padding=0),
             nn.Sigmoid(),
         )
 
@@ -49,11 +61,13 @@ class Generator(nn.Module):
             x = _double_resolution(x)
             x = l(x)
 
-        x = _double_resolution(x)
-        l = self.layers[num_layers-1]
-        x = (weight) * l(x) + (1-weight) * x
+        prev_image = _double_resolution(self.to_rgb(x))
 
-        return self.to_rgb(x)
+        l = self.layers[num_layers-1]
+        x = _double_resolution(x)
+        new_image = self.to_rgb(l(x))
+
+        return (weight) * new_image + (1-weight) * prev_image
 
 
 class Descriminator(nn.Module):
@@ -67,8 +81,8 @@ class Descriminator(nn.Module):
         num_groups = conf.model.num_groups
 
         self.from_rgb = nn.Sequential(
-            nn.GroupNorm(1, 3),
-            _conv(3, channels),
+            nn.BatchNorm2d(3),
+            _conv(in_channels=3, out_channels=channels, kernel_size=1, padding=0),
             nn.LeakyReLU(),
         )
 
@@ -79,18 +93,18 @@ class Descriminator(nn.Module):
         self.classifier = Classifier(conf)
 
     def forward(self, x: torch.Tensor, num_layers, weight) -> torch.Tensor:
+        prev_x = self.from_rgb(_half_resolution(x))
         x = self.from_rgb(x)
 
         if num_layers == 0:
             return self.classifier(x)
 
-        for l in self.layers[:num_layers-1]:
+        l = self.layers[num_layers-1]
+        x = (weight) * _half_resolution(l(x)) + (1-weight) * prev_x
+
+        for l in reversed(self.layers[0:num_layers-1]):
             x = l(x)
             x = _half_resolution(x)
-
-        l = self.layers[num_layers-1]
-        x = (weight) * l(x) + (1-weight) * x
-        x = _half_resolution(x)
 
         return self.classifier(x)
 
@@ -211,6 +225,12 @@ class GAN(pl.LightningModule):
 
         alpha = self.stage.progress
         layers = self.stage.num_layers
+        batch_size = self.stage.batch_size
+
+        self.log("stage percent complete", alpha*100)
+        self.log("num_layers", layers)
+        self.log("batch_size", batch_size)
+
         x = _soft_resample(x, alpha, _image_resolution(self.conf, layers))
 
         if optimizer_idx == 0:

@@ -12,15 +12,15 @@ trainer:
 
 training_stages:
   - num_layers: 0
-    epochs: 1
+    epochs: 2
     batch_size: 512
-    batches_between_image_log: 5
+    batches_between_image_log: 10
   - num_layers: 1
-    epochs: 5
+    epochs: 2
     batch_size: 512
-    batches_between_image_log: 5
+    batches_between_image_log: 10
   - num_layers: 2
-    epochs: 20
+    epochs: 3
     batch_size: 256
     batches_between_image_log: 5
   - num_layers: 3
@@ -28,14 +28,14 @@ training_stages:
     batch_size: 128
     batches_between_image_log: 5
   - num_layers: 4
-    epochs: 20
-    batch_size: 16
+    epochs: 3
+    batch_size: 32
     batches_between_image_log: 100
   - num_layers: 5
-    epochs: 20
-    batch_size: 8
+    epochs: 2
+    batch_size: 10
     batches_between_image_log: 1000
   - num_layers: 6
-    epochs: 20
+    epochs: 1
     batches_between_image_log: 5000
-    batch_size: 2
+    batch_size: 3
