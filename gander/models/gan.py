@@ -29,7 +29,7 @@ from gander.datasets import CelebA, denormalize
 from torch.utils.data import DataLoader
 
 from .stage_manager import Stage
-from .modules import Descriminator, Generator
+from .modules import Descriminator, Generator, resample
 
 
 class GAN(pl.LightningModule):
@@ -90,12 +90,11 @@ class GAN(pl.LightningModule):
 
         wgan_loss = f_g.mean() - f_r.mean()
         gp_loss = gp.mean()
-    
-        print("WGAN loss", wgan_loss)
-        print("grad penalty", gp_loss)
 
-        loss = wgan_loss + gp_loss
+        loss = wgan_loss + 10*gp_loss
 
+        self.log("wgan loss", wgan_loss)
+        self.log("gp loss", gp_loss)
         self.log("descriminator_loss", loss)
 
         return loss
@@ -128,7 +127,7 @@ class GAN(pl.LightningModule):
         batch_size = self.stage.batch_size
 
         x, _ = batch
-        x = _resample(x, _image_resolution(self.conf, layers))
+        x = _soft_resample(x, alpha, _image_resolution(self.conf, layers))
 
         self.log("stage.progress", alpha*100, prog_bar=True)
         self.log("stage.percent_complete", alpha*100)
@@ -154,24 +153,6 @@ class GAN(pl.LightningModule):
             torch.optim.Adam(self.generator.parameters(), lr=lr, eps=adam_epsilon),
         ]
 
-
-# TODO(Ross): think about bias.
-def _conv(in_channels: int, out_channels: int, kernel_size=3, padding=1, stride=1, bias=False):
-    return nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size, padding=padding, stride=stride)
-
-
-def _double_resolution(x: torch.Tensor) -> torch.Tensor:
-    _, _, h, w = x.shape
-    return _resample(x, size=(h * 2, w * 2))
-
-
-def _half_resolution(x: torch.Tensor) -> torch.Tensor:
-    return nn.AvgPool2d(kernel_size=3, stride=2, padding=1)(x)
-
-
-def _resample(x: torch.Tensor, size: Tuple[int, int]) -> torch.Tensor:
-    # TODO(Ross): check align_corners and interpolation mode.
-    return nn.functional.interpolate(x, size=size, mode="bilinear")
 
 
 def _image_resolution(conf, max_layers=None) -> Tuple[int, int]:
@@ -228,3 +209,15 @@ def _gradient_penalty(x, descriminator, layers, alpha):
 
 def _unif(batch_size):
     return torch.distributions.uniform.Uniform(0,1).sample([batch_size])
+
+
+def _soft_resample(x: torch.Tensor, alpha: float, resolution: Tuple[int, int]) -> torch.Tensor:
+    """
+    Softly resample the image from half the size to the full size.
+    """
+    r1 = resolution
+    r2 = resolution[0] // 2, resolution[1] // 2
+    x1 = resample(resample(x, r2), r1)
+    x2 = resample(x, r1)
+
+    return (1-alpha) * x1 + alpha * x2

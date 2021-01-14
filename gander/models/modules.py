@@ -1,3 +1,5 @@
+from typing import Tuple
+
 import torch.nn as nn
 import torch
 
@@ -124,3 +126,22 @@ class Layer(nn.Module):
     
     def forward(self, x):
         return x + self.conv(x)
+
+
+def resample(x: torch.Tensor, size: Tuple[int, int]) -> torch.Tensor:
+    # TODO(Ross): check align_corners and interpolation mode.
+    return nn.functional.interpolate(x, size=size, mode="bilinear")
+
+
+# TODO(Ross): think about bias.
+def _conv(in_channels: int, out_channels: int, kernel_size=3, padding=1, stride=1, bias=False):
+    return nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size, padding=padding, stride=stride)
+
+
+def _double_resolution(x: torch.Tensor) -> torch.Tensor:
+    _, _, h, w = x.shape
+    return resample(x, size=(h * 2, w * 2))
+
+
+def _half_resolution(x: torch.Tensor) -> torch.Tensor:
+    return nn.AvgPool2d(kernel_size=3, stride=2, padding=1)(x)
