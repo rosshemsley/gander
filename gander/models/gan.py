@@ -194,7 +194,8 @@ class GAN(pl.LightningModule):
         f_g = self.descriminator(y, layers, alpha)    
         f_r = self.descriminator(x, layers, alpha)
 
-        # epsilon = _unif().type_as(x)
+        epsilon = _unif().type_as(x)
+        print("epsilon", epsilon)
         # x_hat = epsilon * x + (1-epsilon) * y
 
         # x_hat.requires_grad = True
