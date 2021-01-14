@@ -29,119 +29,7 @@ from gander.datasets import CelebA, denormalize
 from torch.utils.data import DataLoader
 
 from .stage_manager import Stage
-
-DES_STEP_COUNT = 0
-GEN_STEP_COUNT = 0
-
-class Generator(nn.Module):
-    """
-    Take a vector sampled from the latent space, and return a generated
-    output from the net.
-    """
-    def __init__(self, conf):
-        super().__init__()
-        self.conf = conf
-
-        latent_dims = conf.model.latent_dims
-        channels = conf.model.conv_channels
-        num_groups = conf.model.num_groups
-        first_layer_size = conf.model.first_layer_size
-
-        self.first_layer = nn.Linear(latent_dims, first_layer_size[0] * first_layer_size[1] * channels)
-
-        self.layers = nn.ModuleList([
-            Layer(channels, channels, num_groups) for _ in range(conf.model.num_layers)
-        ])
-
-        self.to_rgb = nn.Sequential(
-            nn.GroupNorm(num_groups, channels),
-            _conv(in_channels=channels, out_channels=3, kernel_size=1, padding=0),
-            nn.Sigmoid(),
-        )
-
-    def forward(self, x: torch.Tensor, num_layers, weight) -> torch.Tensor:
-        x = self.first_layer(x)
-        x = x.reshape(-1, self.conf.model.conv_channels, *self.conf.model.first_layer_size)
-
-        if num_layers == 0:
-            return self.to_rgb(x)
-
-        for l in self.layers[:num_layers-1]:
-            x = _double_resolution(x)
-            x = l(x)
-
-        prev_image = _double_resolution(self.to_rgb(x))
-
-        l = self.layers[num_layers-1]
-        x = _double_resolution(x)
-        new_image = self.to_rgb(l(x))
-
-        return (weight) * new_image + (1-weight) * prev_image
-
-
-class Descriminator(nn.Module):
-    """
-    Given a sample from the output of the generated distribution, encode the result
-    back into 
-    """
-    def __init__(self, conf):
-        super().__init__()
-        channels = conf.model.conv_channels
-        num_groups = conf.model.num_groups
-
-        self.from_rgb = nn.Sequential(
-            nn.BatchNorm2d(3),
-            _conv(in_channels=3, out_channels=channels, kernel_size=1, padding=0),
-            nn.LeakyReLU(),
-        )
-
-        self.layers = nn.ModuleList([
-            Layer(channels, channels, num_groups) for _ in range(conf.model.num_layers)
-        ])
-
-        self.critic = Critic(conf)
-
-        # clip_value = 0.01
-        # for p in self.parameters():
-        #     p.register_hook(lambda grad: torch.clamp(grad, -clip_value, clip_value))
-
-
-    def forward(self, x: torch.Tensor, num_layers, weight) -> torch.Tensor:
-        prev_x = self.from_rgb(_half_resolution(x))
-        x = self.from_rgb(x)
-
-        if num_layers == 0:
-            return self.critic(x)
-
-        l = self.layers[num_layers-1]
-        x = (weight) * _half_resolution(l(x)) + (1-weight) * prev_x
-
-        for l in reversed(self.layers[0:num_layers-1]):
-            x = l(x)
-            x = _half_resolution(x)
-
-        return self.critic(x)
-
-
-class Critic(nn.Module):
-    def __init__(self, conf):
-        super().__init__()
-
-        self.epsilon = conf.model.min_confidence
-        resolution = conf.model.first_layer_size
-        channels = conf.model.conv_channels
-        fc_layers = conf.model.fc_layers
-
-        self.critic = nn.Sequential(
-            nn.Linear(resolution[0] * resolution[1] * channels, fc_layers),
-            nn.LeakyReLU(),
-            nn.Linear(fc_layers, 1),
-            nn.LeakyReLU(),
-        )
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = x.view(x.shape[0], -1)
-        return self.critic(x).clamp(min=self.epsilon)
+from .modules import Descriminator, Generator
 
 
 class GAN(pl.LightningModule):
@@ -241,7 +129,6 @@ class GAN(pl.LightningModule):
 
         x, _ = batch
         x = _resample(x, _image_resolution(self.conf, layers))
-        # x = _soft_resample(x, alpha, _image_resolution(self.conf, layers))
 
         self.log("stage.progress", alpha*100, prog_bar=True)
         self.log("stage.percent_complete", alpha*100)
@@ -266,19 +153,6 @@ class GAN(pl.LightningModule):
             torch.optim.Adam(self.descriminator.parameters(), lr=lr, eps=adam_epsilon),
             torch.optim.Adam(self.generator.parameters(), lr=lr, eps=adam_epsilon),
         ]
-
-
-class Layer(nn.Module):
-    def __init__(self, in_channels, out_channels, num_groups):
-        super().__init__()
-        self.conv = nn.Sequential(
-            nn.GroupNorm(num_groups, in_channels),
-            _conv(in_channels, out_channels),
-            nn.LeakyReLU(),
-        )
-    
-    def forward(self, x):
-        return x + self.conv(x)
 
 
 # TODO(Ross): think about bias.
@@ -310,20 +184,6 @@ def _image_resolution(conf, max_layers=None) -> Tuple[int, int]:
         n = min(max_layers, n)
     factor = pow(2, n)
     return h * factor, w * factor
-
-
-def _soft_resample(x, alpha, resolution):
-    """
-    Softly resample the image from half the size to the full size.
-    """
-
-    r1 = resolution
-    r2 = resolution[0] // 2, resolution[1] // 2
-
-    x1 = _resample(_resample(x, r2), r1)
-    x2 = _resample(x, r1)
-
-    return (1-alpha) * x1 + alpha * x2
 
 
 def _random_sample_line_segment(x1, x2):
