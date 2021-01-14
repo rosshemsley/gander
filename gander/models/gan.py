@@ -1,22 +1,9 @@
 """
-Ideas:
+TODO(Ross): Ideas for improvement
 * label smoothing
-* flip labels with some probability
-* DCGAN?
-* ADAM for generator 0.002! SGD for descriminator
-* add semantic labels! (conditional GANs)
-* Add noise to the inputs (both real and generated). Decay over time
-* Train descriinator more?!
-
-
-* Increase fc layers in critic
+* add semantic labels! (conditional GAN)
 * add std deviation computation to create more diversity
-* implement an evaluation function to support tuning
-* Investigate different learning rates
-* Try half precision
-* Implement a way to look at gradient flow
 * Implement correct model state loading
-* remove batch norm on from_rgb layer
 """
 
 from typing import Tuple
@@ -42,7 +29,7 @@ class GAN(pl.LightningModule):
 
         self.stage = None
         self.total_steps_taken = 0
-    
+
     def set_current_stage(self, stage: Stage):
         print("Setting training stage", stage)
         self.stage = stage
@@ -61,7 +48,9 @@ class GAN(pl.LightningModule):
     def train_dataloader(self, reload_dataloaders_every_epoch=True):
         batch_size = self.stage.batch_size
         num_workers = self.conf.trainer.num_dataloaders
-        return DataLoader(self.dataset, shuffle=True, batch_size=batch_size, num_workers=num_workers)
+        return DataLoader(
+            self.dataset, shuffle=True, batch_size=batch_size, num_workers=num_workers
+        )
 
     def forward(self, latent_vectors):
         # TODO
@@ -82,12 +71,12 @@ class GAN(pl.LightningModule):
         gp = _gradient_penalty(x_hat, self.descriminator, layers, alpha)
 
         f_r = self.descriminator(x_r, layers, alpha)
-        f_g = self.descriminator(x_g, layers, alpha)    
+        f_g = self.descriminator(x_g, layers, alpha)
 
         wgan_loss = f_g.mean() - f_r.mean()
         gp_loss = gp.mean()
 
-        loss = wgan_loss + 10*gp_loss
+        loss = wgan_loss + 10 * gp_loss
 
         self.log("wgan loss", wgan_loss)
         self.log("gp loss", gp_loss)
@@ -96,8 +85,12 @@ class GAN(pl.LightningModule):
         if batch_idx % self.stage.batches_between_image_log == 0:
             grid_g = torchvision.utils.make_grid(denormalize(x_g[0:20]), nrow=4)
             grid_r = torchvision.utils.make_grid(denormalize(x_r[0:20]), nrow=4)
-            self.logger.experiment.add_image("images.generated", grid_g, self.total_steps_taken)
-            self.logger.experiment.add_image("images.train", grid_r, self.total_steps_taken)
+            self.logger.experiment.add_image(
+                "images.generated", grid_g, self.total_steps_taken
+            )
+            self.logger.experiment.add_image(
+                "images.train", grid_r, self.total_steps_taken
+            )
 
         return loss
 
@@ -115,7 +108,12 @@ class GAN(pl.LightningModule):
         self.log("generator_loss", loss)
         return loss
 
-    def training_step(self, batch: Tuple[torch.Tensor, torch.Tensor], batch_idx: int, optimizer_idx: int):
+    def training_step(
+        self,
+        batch: Tuple[torch.Tensor, torch.Tensor],
+        batch_idx: int,
+        optimizer_idx: int,
+    ):
         """
         We alternate between using the batch, and ignoring it.
         Technically, this is inefficient, since we always pay the cost of loading the data.
@@ -127,8 +125,8 @@ class GAN(pl.LightningModule):
         x, _ = batch
         x = _soft_resample(x, alpha, _image_resolution(self.conf, layers))
 
-        self.log("stage.progress", alpha*100, prog_bar=True)
-        self.log("stage.percent_complete", alpha*100)
+        self.log("stage.progress", alpha * 100, prog_bar=True)
+        self.log("stage.percent_complete", alpha * 100)
         self.log("num_layers", layers)
         self.log("batch_size", batch_size)
 
@@ -152,7 +150,6 @@ class GAN(pl.LightningModule):
         ]
 
 
-
 def _image_resolution(conf, max_layers=None) -> Tuple[int, int]:
     """
     The resolution of the laster layer of the generator network
@@ -172,7 +169,7 @@ def _random_sample_line_segment(x1, x2):
     """
     batch_size = x1.size(0)
     epsilon = _unif(batch_size).type_as(x1)
-    return epsilon[:, None, None, None] * x1 + (1-epsilon)[:, None, None, None] * x2
+    return epsilon[:, None, None, None] * x1 + (1 - epsilon)[:, None, None, None] * x2
 
 
 def _gradient_penalty(x, descriminator, layers, alpha):
@@ -188,14 +185,14 @@ def _gradient_penalty(x, descriminator, layers, alpha):
     # We compute the gradient of the parameters using the regular autograd.
     # The key to making this work is including `create_graph`, this means that the computations
     # in this penalty will be added to the computation graph for the loss function, so that the
-    # second partial derivatives will be correctly computed. 
+    # second partial derivatives will be correctly computed.
     x.requires_grad = True
     f_x = descriminator(x, layers, alpha)
     f_x.backward(torch.ones_like(f_x), create_graph=True)
 
     grad_x_flat = x.grad.view(batch_size, -1)
     gradient_norm = torch.linalg.norm(grad_x_flat, dim=1)
-    gp = (gradient_norm - 1.0)**2
+    gp = (gradient_norm - 1.0) ** 2
 
     # We must zero the gradient accumulators of the network parameters, to avoid
     # the gradient computation of x in this function affecting the backwards pass of the optimizer.
@@ -206,10 +203,12 @@ def _gradient_penalty(x, descriminator, layers, alpha):
 
 
 def _unif(batch_size):
-    return torch.distributions.uniform.Uniform(0,1).sample([batch_size])
+    return torch.distributions.uniform.Uniform(0, 1).sample([batch_size])
 
 
-def _soft_resample(x: torch.Tensor, alpha: float, resolution: Tuple[int, int]) -> torch.Tensor:
+def _soft_resample(
+    x: torch.Tensor, alpha: float, resolution: Tuple[int, int]
+) -> torch.Tensor:
     """
     Softly resample the image from half the size to the full size.
     """
@@ -218,4 +217,4 @@ def _soft_resample(x: torch.Tensor, alpha: float, resolution: Tuple[int, int]) -
     x1 = resample(resample(x, r2), r1)
     x2 = resample(x, r1)
 
-    return (1-alpha) * x1 + alpha * x2
+    return (1 - alpha) * x1 + alpha * x2

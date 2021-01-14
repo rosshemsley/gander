@@ -5,6 +5,7 @@ from omegaconf import OmegaConf
 import pytorch_lightning as pl
 from gander.models import GAN, StageManager
 
+
 @click.command()
 @click.option(
     "--root-dir",
@@ -43,7 +44,7 @@ if __name__ == "__main__":
 # class MyMod(nn.Module):
 #     def __init__(self):
 #         super().__init__()
-#         self.theta = 
+#         self.theta =
 
 
 def floob():
@@ -73,7 +74,6 @@ def floob():
     z.backward()
 
     print("theta grad", theta.grad)
-
 
     # print ("x grad", x.grad)
     # print ("theta grad", theta.grad)

@@ -1,5 +1,5 @@
 # 🙎‍♂️ gander
-_Let's try playing with GANs_
+_Let's try playing with GANs - a WGAN-gp with a focus on simplicity_
 
 This package contains a toy implementation of WGAN-gp applied to the CelebA dataset using pytorch-lightning.
 We also implement the resolution doubling algorithm proposed by Karras et al. in their _Progressive Growing of Gans_ paper.
