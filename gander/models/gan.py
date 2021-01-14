@@ -194,9 +194,11 @@ class GAN(pl.LightningModule):
         f_g = self.descriminator(y, layers, alpha)    
         f_r = self.descriminator(x, layers, alpha)
 
-        epsilon = _unif().type_as(x)
-        print("epsilon", epsilon)
-        # x_hat = epsilon * x + (1-epsilon) * y
+        epsilon = _unif(batch_size).type_as(x)
+        print("epsilon", epsilon.shape)
+        print("x", x.shape)
+        x_hat = epsilon[:, None] * x + (1-epsilon)[:, None] * y
+        print("x_hat", x_hat.shape)
 
         # x_hat.requires_grad = True
 
@@ -338,5 +340,5 @@ def _soft_resample(x, alpha, resolution):
     return (1-alpha) * x1 + alpha * x2
 
 
-def _unif():
-    return torch.distributions.uniform.Uniform(0,1).sample([1,1])
+def _unif(batch_size):
+    return torch.distributions.uniform.Uniform(0,1).sample([batch_size])
