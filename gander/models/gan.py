@@ -9,7 +9,7 @@ Ideas:
 * Train descriinator more?!
 
 
-* Increase fc layers in classifier
+* Increase fc layers in critic
 * add std deviation computation to create more diversity
 * implement an evaluation function to support tuning
 * Investigate different learning rates
@@ -99,11 +99,11 @@ class Descriminator(nn.Module):
             Layer(channels, channels, num_groups) for _ in range(conf.model.num_layers)
         ])
 
-        self.classifier = Classifier(conf)
+        self.critic = Critic(conf)
 
-        clip_value = 0.01
-        for p in self.parameters():
-            p.register_hook(lambda grad: torch.clamp(grad, -clip_value, clip_value))
+        # clip_value = 0.01
+        # for p in self.parameters():
+        #     p.register_hook(lambda grad: torch.clamp(grad, -clip_value, clip_value))
 
 
     def forward(self, x: torch.Tensor, num_layers, weight) -> torch.Tensor:
@@ -111,7 +111,7 @@ class Descriminator(nn.Module):
         x = self.from_rgb(x)
 
         if num_layers == 0:
-            return self.classifier(x)
+            return self.critic(x)
 
         l = self.layers[num_layers-1]
         x = (weight) * _half_resolution(l(x)) + (1-weight) * prev_x
@@ -120,10 +120,10 @@ class Descriminator(nn.Module):
             x = l(x)
             x = _half_resolution(x)
 
-        return self.classifier(x)
+        return self.critic(x)
 
 
-class Classifier(nn.Module):
+class Critic(nn.Module):
     def __init__(self, conf):
         super().__init__()
 
@@ -132,7 +132,7 @@ class Classifier(nn.Module):
         channels = conf.model.conv_channels
         fc_layers = conf.model.fc_layers
 
-        self.classifier = nn.Sequential(
+        self.critic = nn.Sequential(
             nn.Linear(resolution[0] * resolution[1] * channels, fc_layers),
             nn.LeakyReLU(),
             nn.Linear(fc_layers, 1),
@@ -141,7 +141,7 @@ class Classifier(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = x.view(x.shape[0], -1)
-        return self.classifier(x).clamp(min=self.epsilon)
+        return self.critic(x).clamp(min=self.epsilon)
 
 
 class GAN(pl.LightningModule):
@@ -179,47 +179,34 @@ class GAN(pl.LightningModule):
         # TODO
         ...
 
-    def descriminator_step(self, x, batch_idx):
+    def descriminator_step(self, x_r, batch_idx):
+        """
+        Takes a real sample from the data distribution, x_r, computes the critic loss.
+        """
         layers = self.stage.num_layers
         alpha = self.stage.progress
-        batch_size = x.size(0)
+        batch_size = x_r.size(0)
 
         if batch_idx % self.stage.batches_between_image_log == 0:
-            grid = torchvision.utils.make_grid(denormalize(x[0:20]), nrow=4)
+            grid = torchvision.utils.make_grid(denormalize(x_r[0:20]), nrow=4)
             self.logger.experiment.add_image("train images", grid, self.total_steps_taken)
 
-        latent_vectors = self.random_latent_vectors(batch_size).type_as(x)
-        y = self.generator(latent_vectors, layers, alpha)
+        z = self.random_latent_vectors(batch_size).type_as(x_r)
+        x_g = self.generator(z, layers, alpha)
 
-        f_g = self.descriminator(y, layers, alpha)    
-        f_r = self.descriminator(x, layers, alpha)
+        x_hat = _random_sample_line_segment(x_r, x_g)
+        gp = _gradient_penalty(x_hat, self.descriminator, layers, alpha)
 
-        epsilon = _unif(batch_size).type_as(x)
-        # print("epsilon", epsilon.shape)
-        # print("x", x.shape)
+        f_r = self.descriminator(x_r, layers, alpha)
+        f_g = self.descriminator(x_g, layers, alpha)    
 
-        x_hat = epsilon[:, None, None, None] * x + (1-epsilon)[:, None, None, None] * y
-        x_hat.requires_grad = True
+        wgan_loss = f_g.mean() - f_r.mean()
+        gp_loss = gp.mean()
+    
+        print("WGAN loss", wgan_loss)
+        print("grad penalty", gp_loss)
 
-        f_x_hat = self.descriminator(x_hat, layers, alpha)
-        f_x_hat.backward(torch.ones_like(f_x_hat), create_graph=True)
-
-        x_hat_grad_flat = x_hat.grad.view(batch_size, -1)
-        gradient_norms = torch.linalg.norm(x_hat_grad_flat, dim=1)
-
-        gp = (gradient_norms - 1.0)**2
-
-        x_hat.grad = None
-        self.descriminator.zero_grad()
-        v = gp.mean()
-
-        l = f_g.mean() - f_r.mean()
-        print("WGAN loss", l)
-        print("grad penalty", v)
-        loss = l + v
-        # loss = l
-
-        # print(f"loss term: {l}, new term: {v}")
+        loss = wgan_loss + gp_loss
 
         self.log("descriminator_loss", loss)
 
@@ -337,6 +324,46 @@ def _soft_resample(x, alpha, resolution):
     x2 = _resample(x, r1)
 
     return (1-alpha) * x1 + alpha * x2
+
+
+def _random_sample_line_segment(x1, x2):
+    """
+    Given two tensors [B,C,H,W] of equal dimensions, in a batch of size B.
+    Return a tensor containing B samples randomly sampled on the line segment between each point x1[i], x2[i].
+    """
+    batch_size = x1.size(0)
+    epsilon = _unif(batch_size).type_as(x1)
+    return epsilon[:, None, None, None] * x1 + (1-epsilon)[:, None, None, None] * x2
+
+
+def _gradient_penalty(x, descriminator, layers, alpha):
+    """
+    Compute the gradient penalty term used in WGAN-gp.
+    Returns the gradient penalty for each batch entry, the loss term is computed as the average.
+
+    Works by sampling points on the line segment between x_r and x_g, then computing the gradient
+    of the critic with respect to each sample point.
+    """
+    batch_size = x.size(0)
+
+    # We compute the gradient of the parameters using the regular autograd.
+    # The key to making this work is including `create_graph`, this means that the computations
+    # in this penalty will be added to the computation graph for the loss function, so that the
+    # second partial derivatives will be correctly computed. 
+    x.requires_grad = True
+    f_x = descriminator(x, layers, alpha)
+    f_x.backward(torch.ones_like(f_x), create_graph=True)
+
+    grad_x_flat = x.grad.view(batch_size, -1)
+    gradient_norm = torch.linalg.norm(grad_x_flat, dim=1)
+    gp = (gradient_norm - 1.0)**2
+
+    # We must zero the gradient accumulators of the network parameters, to avoid
+    # the gradient computation of x in this function affecting the backwards pass of the optimizer.
+    x.grad = None
+    descriminator.zero_grad()
+
+    return gp
 
 
 def _unif(batch_size):
