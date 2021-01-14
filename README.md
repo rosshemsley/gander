@@ -16,5 +16,6 @@ pip install git+https://github.com/rosshemsley/gander
 ## Train the net
 
 From within the virtualenv - this is strongly recommended.
+```
 $ train --root-dir /path/to/dir/containing/celba/dataset
 ```
