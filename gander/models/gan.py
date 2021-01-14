@@ -1,5 +1,14 @@
 """
 Ideas:
+* label smoothing
+* flip labels with some probability
+* DCGAN?
+* ADAM for generator 0.002! SGD for descriminator
+* add semantic labels! (conditional GANs)
+* Add noise to the inputs (both real and generated). Decay over time
+* Train descriinator more?!
+
+
 * Increase fc layers in classifier
 * add std deviation computation to create more diversity
 * implement an evaluation function to support tuning
@@ -92,6 +101,11 @@ class Descriminator(nn.Module):
 
         self.classifier = Classifier(conf)
 
+        clip_value = 0.01
+        for p in self.parameters():
+            p.register_hook(lambda grad: torch.clamp(grad, -clip_value, clip_value))
+
+
     def forward(self, x: torch.Tensor, num_layers, weight) -> torch.Tensor:
         prev_x = self.from_rgb(_half_resolution(x))
         x = self.from_rgb(x)
@@ -113,6 +127,7 @@ class Classifier(nn.Module):
     def __init__(self, conf):
         super().__init__()
 
+        self.epsilon = conf.model.min_confidence
         resolution = conf.model.first_layer_size
         channels = conf.model.conv_channels
         fc_layers = conf.model.fc_layers
@@ -121,12 +136,12 @@ class Classifier(nn.Module):
             nn.Linear(resolution[0] * resolution[1] * channels, fc_layers),
             nn.LeakyReLU(),
             nn.Linear(fc_layers, 1),
-            nn.Sigmoid(),
+            nn.LeakyReLU(),
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = x.view(x.shape[0], -1)
-        return self.classifier(x).clamp(min=1e-5, max = 1 - 1e-5)
+        return self.classifier(x).clamp(min=self.epsilon)
 
 
 class GAN(pl.LightningModule):
@@ -138,6 +153,7 @@ class GAN(pl.LightningModule):
         self.descriminator = Descriminator(conf)
 
         self.stage = None
+        self.total_steps_taken = 0
     
     def set_current_stage(self, stage: Stage):
         print("Setting training stage", stage)
@@ -163,55 +179,64 @@ class GAN(pl.LightningModule):
         # TODO
         ...
 
-    def descriminator_step(self, batch, batch_idx):
+    def descriminator_step(self, x, batch_idx):
         layers = self.stage.num_layers
         alpha = self.stage.progress
-
-        x = _resample(batch, _image_resolution(self.conf, layers))
-
-        grid = torchvision.utils.make_grid(denormalize(x[0:16]), nrow=4)
-        if batch_idx % self.stage.batches_between_image_log == 0:
-            self.logger.experiment.add_image("train images", grid, DES_STEP_COUNT)
-
         batch_size = x.size(0)
+
+        if batch_idx % self.stage.batches_between_image_log == 0:
+            grid = torchvision.utils.make_grid(denormalize(x[0:20]), nrow=4)
+            self.logger.experiment.add_image("train images", grid, self.total_steps_taken)
 
         latent_vectors = self.random_latent_vectors(batch_size).type_as(x)
         y = self.generator(latent_vectors, layers, alpha)
-        p_gen = self.descriminator(y, layers, alpha)
 
-        desciminator_correct_fake = (p_gen < 0.5).sum()
-        nll_generated = -torch.log(1 - p_gen)
+        f_g = self.descriminator(y, layers, alpha)    
+        f_r = self.descriminator(x, layers, alpha)
 
-        fake_percent_correct = (desciminator_correct_fake / batch_size) * 100
-        self.log("fake_percent_correct", fake_percent_correct)
+        # epsilon = _unif().type_as(x)
+        # x_hat = epsilon * x + (1-epsilon) * y
 
-        p_real = self.descriminator(x, layers, alpha)
-        desciminator_correct_real = (p_real > 0.5).sum()
-        nll_real = - torch.log(p_real)
+        # x_hat.requires_grad = True
 
-        real_percent_correct = (desciminator_correct_real / batch_size) * 100
-        self.log("real_percent_correct", real_percent_correct)
+        # f_x_hat = self.descriminator(x_hat, layers, alpha)
+        # f_x_hat.backward(torch.ones_like(f_x_hat), create_graph=True)
 
-        loss = torch.vstack([nll_generated, nll_real]).mean()
+        # # print("x hat size", x_hat.shape)
+        # # print("flat size", x_hat_grad_flat.shape)
+        # x_hat_grad_flat = x_hat.grad.view(batch_size, -1)
+        # gradient_norms = torch.linalg.norm(x_hat_grad_flat, dim=1)
+        # gp = (gradient_norms - 100.0)**2
+
+        # x_hat.grad = None
+        # self.descriminator.zero_grad()
+        # v = gp.mean()
+
+        l = f_g.mean() - f_r.mean()
+        print("WGAN loss", l)
+        # loss = l + v
+        loss = l
+
+        # print(f"loss term: {l}, new term: {v}")
+
         self.log("descriminator_loss", loss)
-        self.log("success rate", 100*(desciminator_correct_fake + desciminator_correct_real) / (2*batch_size))
 
         return loss
 
-    def generator_step(self, batch, batch_idx):
+    def generator_step(self, x, batch_idx):
         layers = self.stage.num_layers
         alpha = self.stage.progress
+        batch_size = x.size(0)
 
-        batch_size = batch.size(0)
-        latent_vectors = self.random_latent_vectors(batch_size).type_as(batch)
+        latent_vectors = self.random_latent_vectors(batch_size).type_as(x)
 
         y = self.generator(latent_vectors, layers, alpha)
-        p = self.descriminator(y, layers, alpha)
-        loss = -torch.log(p).mean()
+        f = self.descriminator(y, layers, alpha)
+        loss = -f.mean()
 
-        grid = torchvision.utils.make_grid(denormalize(y[0:16]), nrow=4)
         if batch_idx % self.stage.batches_between_image_log == 0:
-            self.logger.experiment.add_image("generated images", grid, GEN_STEP_COUNT)
+            grid = torchvision.utils.make_grid(denormalize(y[0:20]), nrow=4)
+            self.logger.experiment.add_image("generated images", grid, self.total_steps_taken)
 
         self.log("generator_loss", loss)
         return loss
@@ -221,33 +246,38 @@ class GAN(pl.LightningModule):
         We alternate between using the batch, and ignoring it.
         Technically, this is inefficient, since we always pay the cost of loading the data.
         """
-        x, _ = batch
-
         alpha = self.stage.progress
         layers = self.stage.num_layers
         batch_size = self.stage.batch_size
 
-        self.log("stage percent complete", alpha*100)
+        x, _ = batch
+        x = _resample(x, _image_resolution(self.conf, layers))
+        # x = _soft_resample(x, alpha, _image_resolution(self.conf, layers))
+
+        self.log("stage.progress", alpha*100, prog_bar=True)
+        self.log("stage.percent_complete", alpha*100)
         self.log("num_layers", layers)
         self.log("batch_size", batch_size)
 
-        x = _soft_resample(x, alpha, _image_resolution(self.conf, layers))
-
         if optimizer_idx == 0:
-            global GEN_STEP_COUNT
-            GEN_STEP_COUNT += 1
-            return self.generator_step(x, batch_idx)
-        else:
-            global DES_STEP_COUNT
-            DES_STEP_COUNT += 1
+            self.total_steps_taken += 1
             return self.descriminator_step(x, batch_idx)
+        else:
+            if batch_idx % 5 == 0:
+                return self.generator_step(x, batch_idx)
+            else:
+                return None
 
     def configure_optimizers(self):
         lr = self.conf.trainer.learning_rate
+        adam_epsilon = self.conf.trainer.epsilon
         return [
-            torch.optim.Adam(self.generator.parameters(), lr=lr),
-            torch.optim.Adam(self.descriminator.parameters(), lr=lr),
+            # RMSprop since the critic tends not to be stationary (see WGAN paper)
+            # torch.optim.RMSprop(self.descriminator.parameters(), lr=0.001),
+            torch.optim.Adam(self.descriminator.parameters(), lr=lr, eps=adam_epsilon),
+            torch.optim.Adam(self.generator.parameters(), lr=lr, eps=adam_epsilon),
         ]
+
 
 class Layer(nn.Module):
     def __init__(self, in_channels, out_channels, num_groups):
@@ -261,14 +291,10 @@ class Layer(nn.Module):
     def forward(self, x):
         return x + self.conv(x)
 
+
 # TODO(Ross): think about bias.
 def _conv(in_channels: int, out_channels: int, kernel_size=3, padding=1, stride=1, bias=False):
     return nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size, padding=padding, stride=stride)
-
-
-def _resample(x: torch.Tensor, size: Tuple[int, int]) -> torch.Tensor:
-    # TODO(Ross): check align_corners and interpolation mode.
-    return nn.functional.interpolate(x, size=size, mode="bilinear")
 
 
 def _double_resolution(x: torch.Tensor) -> torch.Tensor:
@@ -278,6 +304,11 @@ def _double_resolution(x: torch.Tensor) -> torch.Tensor:
 
 def _half_resolution(x: torch.Tensor) -> torch.Tensor:
     return nn.AvgPool2d(kernel_size=3, stride=2, padding=1)(x)
+
+
+def _resample(x: torch.Tensor, size: Tuple[int, int]) -> torch.Tensor:
+    # TODO(Ross): check align_corners and interpolation mode.
+    return nn.functional.interpolate(x, size=size, mode="bilinear")
 
 
 def _image_resolution(conf, max_layers=None) -> Tuple[int, int]:
@@ -291,21 +322,6 @@ def _image_resolution(conf, max_layers=None) -> Tuple[int, int]:
     factor = pow(2, n)
     return h * factor, w * factor
 
-def _interpolate_factors(alpha, n):
-    if n == 1:
-        return [1.0]
-
-    x = alpha * 1/n
-    remainder = 1-x
-
-    result = []
-    for i in range(n-1):
-        v = (1-x) * (1/(n-1))
-        result.append(v)
-
-    result.append(x)
-
-    return result
 
 def _soft_resample(x, alpha, resolution):
     """
@@ -319,3 +335,7 @@ def _soft_resample(x, alpha, resolution):
     x2 = _resample(x, r1)
 
     return (1-alpha) * x1 + alpha * x2
+
+
+def _unif():
+    return torch.distributions.uniform.Uniform(0,1).sample([1,1])
