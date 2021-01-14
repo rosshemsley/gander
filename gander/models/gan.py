@@ -195,30 +195,29 @@ class GAN(pl.LightningModule):
         f_r = self.descriminator(x, layers, alpha)
 
         epsilon = _unif(batch_size).type_as(x)
-        print("epsilon", epsilon.shape)
-        print("x", x.shape)
-        x_hat = epsilon[:, None] * x + (1-epsilon)[:, None] * y
-        print("x_hat", x_hat.shape)
+        # print("epsilon", epsilon.shape)
+        # print("x", x.shape)
 
-        # x_hat.requires_grad = True
+        x_hat = epsilon[:, None, None, None] * x + (1-epsilon)[:, None, None, None] * y
+        x_hat.requires_grad = True
 
-        # f_x_hat = self.descriminator(x_hat, layers, alpha)
-        # f_x_hat.backward(torch.ones_like(f_x_hat), create_graph=True)
+        f_x_hat = self.descriminator(x_hat, layers, alpha)
+        f_x_hat.backward(torch.ones_like(f_x_hat), create_graph=True)
 
-        # # print("x hat size", x_hat.shape)
-        # # print("flat size", x_hat_grad_flat.shape)
-        # x_hat_grad_flat = x_hat.grad.view(batch_size, -1)
-        # gradient_norms = torch.linalg.norm(x_hat_grad_flat, dim=1)
-        # gp = (gradient_norms - 100.0)**2
+        x_hat_grad_flat = x_hat.grad.view(batch_size, -1)
+        gradient_norms = torch.linalg.norm(x_hat_grad_flat, dim=1)
 
-        # x_hat.grad = None
-        # self.descriminator.zero_grad()
-        # v = gp.mean()
+        gp = (gradient_norms - 1.0)**2
+
+        x_hat.grad = None
+        self.descriminator.zero_grad()
+        v = gp.mean()
 
         l = f_g.mean() - f_r.mean()
         print("WGAN loss", l)
-        # loss = l + v
-        loss = l
+        print("grad penalty", v)
+        loss = l + v
+        # loss = l
 
         # print(f"loss term: {l}, new term: {v}")
 
