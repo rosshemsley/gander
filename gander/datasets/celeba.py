@@ -5,6 +5,7 @@ from torchvision.transforms import (
     Normalize,
     ToTensor,
     Resize,
+    RandomHorizontalFlip,
 )
 from torchvision.datasets import ImageFolder
 
@@ -20,6 +21,7 @@ class CelebA(ImageFolder):
             ToTensor(),
             # Normalize(mean=MEAN, std=STD),
             Resize((128, 128)),
+            RandomHorizontalFlip(),
         ])
         super(CelebA, self).__init__(root=root_dir, transform=transform)
 

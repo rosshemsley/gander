@@ -75,10 +75,6 @@ class GAN(pl.LightningModule):
         alpha = self.stage.progress
         batch_size = x_r.size(0)
 
-        if batch_idx % self.stage.batches_between_image_log == 0:
-            grid = torchvision.utils.make_grid(denormalize(x_r[0:20]), nrow=4)
-            self.logger.experiment.add_image("train images", grid, self.total_steps_taken)
-
         z = self.random_latent_vectors(batch_size).type_as(x_r)
         x_g = self.generator(z, layers, alpha)
 
@@ -97,6 +93,12 @@ class GAN(pl.LightningModule):
         self.log("gp loss", gp_loss)
         self.log("descriminator_loss", loss)
 
+        if batch_idx % self.stage.batches_between_image_log == 0:
+            grid_g = torchvision.utils.make_grid(denormalize(x_g[0:20]), nrow=4)
+            grid_r = torchvision.utils.make_grid(denormalize(x_r[0:20]), nrow=4)
+            self.logger.experiment.add_image("images.generated", grid_g, self.total_steps_taken)
+            self.logger.experiment.add_image("images.train", grid_r, self.total_steps_taken)
+
         return loss
 
     def generator_step(self, x, batch_idx):
@@ -109,10 +111,6 @@ class GAN(pl.LightningModule):
         y = self.generator(latent_vectors, layers, alpha)
         f = self.descriminator(y, layers, alpha)
         loss = -f.mean()
-
-        if batch_idx % self.stage.batches_between_image_log == 0:
-            grid = torchvision.utils.make_grid(denormalize(y[0:20]), nrow=4)
-            self.logger.experiment.add_image("generated images", grid, self.total_steps_taken)
 
         self.log("generator_loss", loss)
         return loss

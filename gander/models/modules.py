@@ -112,7 +112,7 @@ class Critic(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = x.view(x.shape[0], -1)
-        return self.critic(x).clamp(min=self.epsilon)
+        return self.critic(x)
 
 
 class Layer(nn.Module):
@@ -121,16 +121,15 @@ class Layer(nn.Module):
         self.conv = nn.Sequential(
             nn.GroupNorm(num_groups, in_channels),
             _conv(in_channels, out_channels),
-            nn.LeakyReLU(),
         )
     
     def forward(self, x):
-        return x + self.conv(x)
+        return nn.LeakyReLU()(x + self.conv(x))
 
 
 def resample(x: torch.Tensor, size: Tuple[int, int]) -> torch.Tensor:
     # TODO(Ross): check align_corners and interpolation mode.
-    return nn.functional.interpolate(x, size=size, mode="bilinear")
+    return nn.functional.interpolate(x, size=size, mode="bilinear", align_corners=True)
 
 
 # TODO(Ross): think about bias.
