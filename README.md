@@ -7,6 +7,7 @@ We also implement the resolution doubling algorithm proposed by Karras et al. in
 This implementation is just a toy, feel free to use it for inspiration.
 
 ![visualization of training the network](example/training.gif)
+
 _Above: a gif showing the output of the network at as training progresses_
 
 ## Install the package
