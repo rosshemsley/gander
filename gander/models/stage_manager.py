@@ -17,9 +17,6 @@ class StageManager(pl.Callback):
     """
     StageManager tracks the new concept of "stage"
     which is a group of epochs.
-
-    TODO(Ross): Ensure we save the state of the state manager into the checkpoint
-    so that we can load it.
     """
 
     def __init__(self, conf):
@@ -59,3 +56,17 @@ class StageManager(pl.Callback):
             self.current_stage.epochs * trainer.num_training_batches
         )
         self.current_step += 1
+
+    def on_save_checkpoint(_, __):
+        return {
+            "conf": self.conf,
+            "index": self.index,
+            "current_epoch": self.current_epoch,
+            "current_step": self.current_step,
+        }
+
+    def on_load_checkpoint(dct):
+        self.conf = dct["conf"]
+        self.index = dct["index"]
+        self.current_epoch = dct["current_epoch"]
+        self.current_step = dct["current_step"]

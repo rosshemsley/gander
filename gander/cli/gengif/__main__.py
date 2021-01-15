@@ -41,9 +41,16 @@ import tensorboard.compat.proto.event_pb2 as event_pb2
     "--step",
     default=100,
     type=int,
-    help="only write every --step images to the output."
+    help="only write every --step images to the output.",
 )
-def main(logfile: str, image_tag: str, step: int, output: str, frame_duration_ms: int, image_width: int):
+def main(
+    logfile: str,
+    image_tag: str,
+    step: int,
+    output: str,
+    frame_duration_ms: int,
+    image_width: int,
+):
     images = []
     count = 0
 
@@ -66,13 +73,15 @@ def main(logfile: str, image_tag: str, step: int, output: str, frame_duration_ms
 
     resized_images = []
     for img in images:
-        img = img.resize((image_width, int(img.height * image_width/img.width)))
+        img = img.resize((image_width, int(img.height * image_width / img.width)))
         resized_images.append(img)
 
     print(f"Writing gif with {len(images)} frames")
     im = resized_images[0]
     duration = int(frame_duration_ms)
-    im.save(output, save_all=True, append_images=resized_images, duration=duration, loop=0)
+    im.save(
+        output, save_all=True, append_images=resized_images, duration=duration, loop=0
+    )
 
 
 def extract_image_if_present(event, image_tag) -> Optional[Image.Image]:

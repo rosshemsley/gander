@@ -72,7 +72,7 @@ class GAN(pl.LightningModule):
         f_r = self.descriminator(x_r, layers, alpha)
         f_g = self.descriminator(x_g, layers, alpha)
 
-        gan_loss = -torch.log(f_r).mean() - torch.log(1-f_g).mean()
+        gan_loss = -torch.log(f_r).mean() - torch.log(1 - f_g).mean()
 
         # wgan_loss = f_g.mean() - f_r.mean()
         # gp_loss = gp.mean()
@@ -196,12 +196,12 @@ def _gradient_penalty(x, descriminator, layers, alpha):
 
     grad_x_flat = x.grad.view(batch_size, -1)
     gradient_norm = torch.linalg.norm(grad_x_flat, dim=1)
-    gp = (gradient_norm - 1.0) ** 2
+    gp = torch.pow((gradient_norm - 1.0), 2)
 
     # We must zero the gradient accumulators of the network parameters, to avoid
     # the gradient computation of x in this function affecting the backwards pass of the optimizer.
-    # x.grad = None
     descriminator.zero_grad()
+    x.grad = None
 
     return gp
 
