@@ -27,7 +27,7 @@ def main(root_dir: str):
     trainer = pl.Trainer(
         gpus=1,
         max_epochs=100000,
-        precision=16,
+        # precision=16,
         # gradient_clip_val=0.5,
         callbacks=[stage_manager],
         reload_dataloaders_every_epoch=True,

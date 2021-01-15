@@ -70,7 +70,6 @@ class Descriminator(nn.Module):
         num_groups = conf.model.num_groups
 
         self.from_rgb = nn.Sequential(
-            nn.BatchNorm2d(3),
             _conv(in_channels=3, out_channels=channels, kernel_size=1, padding=0),
             nn.LeakyReLU(),
         )
@@ -118,7 +117,8 @@ class Critic(nn.Module):
             nn.Linear(resolution[0] * resolution[1] * channels, fc_layers),
             nn.LeakyReLU(),
             nn.Linear(fc_layers, 1),
-            nn.LeakyReLU(),
+            nn.Sigmoid(),
+            # nn.ReLU(),
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -135,7 +135,8 @@ class Layer(nn.Module):
         )
 
     def forward(self, x):
-        return nn.LeakyReLU()(x + self.conv(x))
+        # return nn.LeakyReLU()(self.conv(x))
+        return nn.LeakyReLU()(self.conv(x))
 
 
 def resample(x: torch.Tensor, size: Tuple[int, int]) -> torch.Tensor:

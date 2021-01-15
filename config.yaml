@@ -1,5 +1,5 @@
 model:
-  min_confidence: 1e-4
+  min_confidence: 1e-6
   latent_dims: 512
   first_layer_size: [4, 4]
   conv_channels: 512
@@ -10,28 +10,28 @@ model:
 trainer:
   num_dataloaders: 16
   learning_rate: 1e-4
-  epsilon: 1e-4
+  epsilon: 1e-6
 
 training_stages:
-  - num_layers: 0
-    epochs: 3
-    batch_size: 2048
-    batches_between_image_log: 10
-  - num_layers: 1
-    epochs: 3
-    batch_size: 1024
-    batches_between_image_log: 10
+  # - num_layers: 0
+  #   epochs: 1
+  #   batch_size: 1024
+  #   batches_between_image_log: 10
+  # - num_layers: 1
+  #   epochs: 2
+  #   batch_size: 1024
+  #   batches_between_image_log: 10
   - num_layers: 2
     epochs: 5
-    batch_size: 512
+    batch_size: 256
     batches_between_image_log: 5
   - num_layers: 3
     epochs: 10
-    batch_size: 128
+    batch_size: 64
     batches_between_image_log: 5
   - num_layers: 4
     epochs: 3
-    batch_size: 32
+    batch_size: 16
     batches_between_image_log: 20
   - num_layers: 5
     epochs: 2
@@ -40,4 +40,4 @@ training_stages:
   - num_layers: 6
     epochs: 4
     batches_between_image_log: 10
-    batch_size: 2
+    batch_size: 1

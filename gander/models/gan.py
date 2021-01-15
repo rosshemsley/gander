@@ -30,6 +30,9 @@ class GAN(pl.LightningModule):
         self.stage = None
         self.total_steps_taken = 0
 
+    def forward(self, latent_vectors):
+        return self.generator(latent_vectors, self.conf.model.num_layers, 1.0)
+
     def set_current_stage(self, stage: Stage):
         print("Setting training stage", stage)
         self.stage = stage
@@ -52,10 +55,6 @@ class GAN(pl.LightningModule):
             self.dataset, shuffle=True, batch_size=batch_size, num_workers=num_workers
         )
 
-    def forward(self, latent_vectors):
-        # TODO
-        ...
-
     def descriminator_step(self, x_r, batch_idx):
         """
         Takes a real sample from the data distribution, x_r, computes the critic loss.
@@ -67,19 +66,24 @@ class GAN(pl.LightningModule):
         z = self.random_latent_vectors(batch_size).type_as(x_r)
         x_g = self.generator(z, layers, alpha)
 
-        x_hat = _random_sample_line_segment(x_r, x_g)
-        gp = _gradient_penalty(x_hat, self.descriminator, layers, alpha)
+        # x_hat = _random_sample_line_segment(x_r, x_g)
+        # gp = _gradient_penalty(x_hat, self.descriminator, layers, alpha)
 
         f_r = self.descriminator(x_r, layers, alpha)
         f_g = self.descriminator(x_g, layers, alpha)
 
-        wgan_loss = f_g.mean() - f_r.mean()
-        gp_loss = gp.mean()
+        gan_loss = -torch.log(f_r).mean() - torch.log(1-f_g).mean()
 
-        loss = wgan_loss + 10 * gp_loss
+        # wgan_loss = f_g.mean() - f_r.mean()
+        # gp_loss = gp.mean()
+        # wgan_gp_loss = wgan_loss + gp_loss
 
-        self.log("wgan loss", wgan_loss)
-        self.log("gp loss", gp_loss)
+        # loss = wgan_loss + gp_loss
+        # loss = wgan_loss
+        loss = gan_loss
+
+        # self.log("wgan loss", wgan_loss)
+        # self.log("gp loss", gp_loss)
         self.log("descriminator_loss", loss)
 
         if batch_idx % self.stage.batches_between_image_log == 0:
@@ -103,7 +107,7 @@ class GAN(pl.LightningModule):
 
         y = self.generator(latent_vectors, layers, alpha)
         f = self.descriminator(y, layers, alpha)
-        loss = -f.mean()
+        loss = -torch.log(f).mean()
 
         self.log("generator_loss", loss)
         return loss
@@ -134,10 +138,10 @@ class GAN(pl.LightningModule):
             self.total_steps_taken += 1
             return self.descriminator_step(x, batch_idx)
         else:
-            if batch_idx % 5 == 0:
-                return self.generator_step(x, batch_idx)
-            else:
-                return None
+            return self.generator_step(x, batch_idx)
+            # if batch_idx % 5 == 0:
+            # else:
+            #     return None
 
     def configure_optimizers(self):
         lr = self.conf.trainer.learning_rate
@@ -145,8 +149,8 @@ class GAN(pl.LightningModule):
         return [
             # RMSprop since the critic tends not to be stationary (see WGAN paper)
             # torch.optim.RMSprop(self.descriminator.parameters(), lr=0.001),
-            torch.optim.Adam(self.descriminator.parameters(), lr=lr, eps=adam_epsilon),
-            torch.optim.Adam(self.generator.parameters(), lr=lr, eps=adam_epsilon),
+            torch.optim.Adam(self.descriminator.parameters(), lr=lr),
+            torch.optim.Adam(self.generator.parameters(), lr=lr),
         ]
 
 
@@ -196,7 +200,7 @@ def _gradient_penalty(x, descriminator, layers, alpha):
 
     # We must zero the gradient accumulators of the network parameters, to avoid
     # the gradient computation of x in this function affecting the backwards pass of the optimizer.
-    x.grad = None
+    # x.grad = None
     descriminator.zero_grad()
 
     return gp
@@ -218,3 +222,24 @@ def _soft_resample(
     x2 = resample(x, r1)
 
     return (1 - alpha) * x1 + alpha * x2
+
+
+"""
+Problems to rule out / how to rull it out
+* Gradient computed correctly in loss
+    * Train a regular WGAN and ensure it converges
+
+* Randomly sampled point correct
+    * Simply set epsilon = 1
+
+* Network arch problem (modules / data / transforms)
+    * use regular convs
+    * Reimplement classical GAN loss and test it again
+
+* Optimizer problem (train as regular GAN)
+
+
+* 
+
+
+"""

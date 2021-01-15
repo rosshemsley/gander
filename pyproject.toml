@@ -1,5 +1,6 @@
 [tool.poetry.scripts]
 train = "gander.cli.train.__main__:main"
+gengif = "gander.cli.gengif.__main__:main"
 
 [tool.poetry]
 name = "gander"
