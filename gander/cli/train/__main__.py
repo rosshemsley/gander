@@ -1,5 +1,6 @@
 import pathlib
 import click
+from typing import Optional
 
 from omegaconf import OmegaConf
 import pytorch_lightning as pl
@@ -9,81 +10,38 @@ from gander.models import GAN, StageManager
 @click.command()
 @click.option(
     "--root-dir",
-    required=True,
+    required=False,
     type=click.Path(exists=True, dir_okay=True, file_okay=False),
     help="Root directory of the interaction dataset.",
 )
-def main(root_dir: str):
-    # floob()
-    # return
+@click.option(
+    "--resume-checkpoint",
+    type=click.Path(exists=True, dir_okay=False, file_okay=True),
+    help="Given a checkpoint, resume training from that point.",
+)
+def main(root_dir: Optional[str], resume_checkpoint: Optional[str]):
+    if resume_checkpoint is not None:
+        print("Resuming training from checkpoint...")
+        model = GAN.load_from_checkpoint(resume_checkpoint)
+    else:
+        conf = OmegaConf.load("config.yaml")
+        model = GAN(conf)
 
-    conf = OmegaConf.load("config.yaml")
-    conf.root_dir = root_dir
+    if root_dir is not None:
+        model.conf.root_dir = root_dir
 
-    print(OmegaConf.to_yaml(conf))
+    print(OmegaConf.to_yaml(model.conf))
 
-    model = GAN(conf)
-    stage_manager = StageManager(conf)
+    stage_manager = StageManager()
     trainer = pl.Trainer(
         gpus=1,
         max_epochs=100000,
-        # precision=16,
-        # gradient_clip_val=0.5,
         callbacks=[stage_manager],
         reload_dataloaders_every_epoch=True,
+        resume_from_checkpoint=resume_checkpoint,
     )
     trainer.fit(model)
 
 
 if __name__ == "__main__":
     main()
-
-
-# import torch
-# import torch.nn as nn
-# class MyMod(nn.Module):
-#     def __init__(self):
-#         super().__init__()
-#         self.theta =
-
-
-def floob():
-    import torch
-
-    def f(x, theta):
-        return torch.pow((x), 2) * theta
-
-    x = torch.Tensor([3])
-    theta = torch.Tensor([5])
-
-    x.requires_grad = True
-    theta.requires_grad = True
-
-    y = f(x, theta)
-
-    y.backward(create_graph=True)
-    # torch.autograd.backward(y, create_graph=True)
-    print("autograd x grad", x.grad)
-
-    z = y + x.grad
-    # z = x.grad
-
-    print("theta grad", theta.grad)
-    print("z evaluated", z)
-    theta.grad = None
-    z.backward()
-
-    print("theta grad", theta.grad)
-
-    # print ("x grad", x.grad)
-    # print ("theta grad", theta.grad)
-    # # print ("y grad", y.grad)
-
-    # print("backwards again...")
-
-    # x.grad = None
-    # theta.grad = None
-    # y.backward(retain_graph=True)
-
-    # print ("x grad", x.grad)
-    # print ("theta grad", theta.grad)

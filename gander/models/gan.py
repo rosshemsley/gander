@@ -22,6 +22,8 @@ from .modules import Descriminator, Generator, resample
 class GAN(pl.LightningModule):
     def __init__(self, conf):
         super().__init__()
+        self.save_hyperparameters()
+
         self.conf = conf
 
         self.generator = Generator(conf)
@@ -129,7 +131,7 @@ class GAN(pl.LightningModule):
         x, _ = batch
         x = _soft_resample(x, alpha, _image_resolution(self.conf, layers))
 
-        self.log("stage.progress", alpha * 100, prog_bar=True)
+        self.log("stage_progress", alpha * 100, prog_bar=True)
         self.log("stage.percent_complete", alpha * 100)
         self.log("num_layers", layers)
         self.log("batch_size", batch_size)

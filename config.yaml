@@ -13,14 +13,14 @@ trainer:
   epsilon: 1e-6
 
 training_stages:
-  # - num_layers: 0
-  #   epochs: 1
-  #   batch_size: 1024
-  #   batches_between_image_log: 10
-  # - num_layers: 1
-  #   epochs: 2
-  #   batch_size: 1024
-  #   batches_between_image_log: 10
+  - num_layers: 0
+    epochs: 1
+    batch_size: 1024
+    batches_between_image_log: 10
+  - num_layers: 1
+    epochs: 2
+    batch_size: 1024
+    batches_between_image_log: 10
   - num_layers: 2
     epochs: 5
     batch_size: 256
