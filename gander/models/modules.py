@@ -117,8 +117,7 @@ class Critic(nn.Module):
             nn.Linear(resolution[0] * resolution[1] * channels, fc_layers),
             nn.LeakyReLU(),
             nn.Linear(fc_layers, 1),
-            nn.Sigmoid(),
-            # nn.ReLU(),
+            nn.ReLU(),
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -135,7 +134,6 @@ class Layer(nn.Module):
         )
 
     def forward(self, x):
-        # return nn.LeakyReLU()(self.conv(x))
         return nn.LeakyReLU()(self.conv(x))
 
 

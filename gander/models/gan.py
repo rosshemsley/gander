@@ -68,24 +68,14 @@ class GAN(pl.LightningModule):
         z = self.random_latent_vectors(batch_size).type_as(x_r)
         x_g = self.generator(z, layers, alpha)
 
-        # x_hat = _random_sample_line_segment(x_r, x_g)
-        # gp = _gradient_penalty(x_hat, self.descriminator, layers, alpha)
+        x_hat = _random_sample_line_segment(x_r, x_g)
+        gp = _gradient_penalty(x_hat, self.descriminator, layers, alpha)
 
         f_r = self.descriminator(x_r, layers, alpha)
         f_g = self.descriminator(x_g, layers, alpha)
 
-        gan_loss = -torch.log(f_r).mean() - torch.log(1 - f_g).mean()
+        loss = f_g.mean() - f_r.mean() + 10*gp.mean()
 
-        # wgan_loss = f_g.mean() - f_r.mean()
-        # gp_loss = gp.mean()
-        # wgan_gp_loss = wgan_loss + gp_loss
-
-        # loss = wgan_loss + gp_loss
-        # loss = wgan_loss
-        loss = gan_loss
-
-        # self.log("wgan loss", wgan_loss)
-        # self.log("gp loss", gp_loss)
         self.log("descriminator_loss", loss)
 
         if batch_idx % self.stage.batches_between_image_log == 0:
@@ -109,7 +99,7 @@ class GAN(pl.LightningModule):
 
         y = self.generator(latent_vectors, layers, alpha)
         f = self.descriminator(y, layers, alpha)
-        loss = -torch.log(f).mean()
+        loss = -f.mean()
 
         self.log("generator_loss", loss)
         return loss
