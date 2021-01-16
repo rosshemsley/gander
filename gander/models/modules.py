@@ -108,7 +108,6 @@ class Critic(nn.Module):
     def __init__(self, conf):
         super().__init__()
 
-        self.epsilon = conf.model.min_confidence
         resolution = conf.model.first_layer_size
         channels = conf.model.conv_channels
         fc_layers = conf.model.fc_layers
@@ -117,7 +116,6 @@ class Critic(nn.Module):
             nn.Linear(resolution[0] * resolution[1] * channels, fc_layers),
             nn.LeakyReLU(),
             nn.Linear(fc_layers, 1),
-            nn.ReLU(),
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -134,17 +132,17 @@ class Layer(nn.Module):
         )
 
     def forward(self, x):
-        return nn.LeakyReLU()(self.conv(x))
+        return nn.LeakyReLU()(x + self.conv(x))
 
 
 def resample(x: torch.Tensor, size: Tuple[int, int]) -> torch.Tensor:
     # TODO(Ross): check align_corners and interpolation mode.
-    return nn.functional.interpolate(x, size=size, mode="bilinear", align_corners=True)
+    return nn.functional.interpolate(x, size=size, mode="bilinear")
 
 
-# TODO(Ross): think about bias.
+# TODO(Ross): think about True.
 def _conv(
-    in_channels: int, out_channels: int, kernel_size=3, padding=1, stride=1, bias=False
+    in_channels: int, out_channels: int, kernel_size=3, padding=1, stride=1, bias=True
 ):
     return nn.Conv2d(
         in_channels,

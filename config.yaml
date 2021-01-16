@@ -22,22 +22,22 @@ training_stages:
     batch_size: 1024
     batches_between_image_log: 10
   - num_layers: 2
-    epochs: 5
-    batch_size: 256
+    epochs: 3
+    batch_size: 512
     batches_between_image_log: 5
   - num_layers: 3
-    epochs: 10
-    batch_size: 64
+    epochs: 20
+    batch_size: 128
     batches_between_image_log: 5
   - num_layers: 4
     epochs: 3
-    batch_size: 16
+    batch_size: 20
     batches_between_image_log: 20
   - num_layers: 5
     epochs: 2
-    batch_size: 8
+    batch_size: 6
     batches_between_image_log: 20
   - num_layers: 6
     epochs: 4
     batches_between_image_log: 10
-    batch_size: 1
+    batch_size: 2

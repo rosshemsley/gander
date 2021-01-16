@@ -3,7 +3,6 @@ TODO(Ross): Ideas for improvement
 * label smoothing
 * add semantic labels! (conditional GAN)
 * add std deviation computation to create more diversity
-* Implement correct model state loading
 """
 
 from typing import Tuple
@@ -74,7 +73,11 @@ class GAN(pl.LightningModule):
         f_r = self.descriminator(x_r, layers, alpha)
         f_g = self.descriminator(x_g, layers, alpha)
 
-        loss = f_g.mean() - f_r.mean() + 10*gp.mean()
+        wgan_loss = f_g.mean() - f_r.mean()
+        gp_loss = gp.mean()
+        self.log("wgan_loss", wgan_loss)
+        self.log("gp_loss", gp_loss)
+        loss = wgan_loss + 10*gp_loss
 
         self.log("descriminator_loss", loss)
 
@@ -131,9 +134,6 @@ class GAN(pl.LightningModule):
             return self.descriminator_step(x, batch_idx)
         else:
             return self.generator_step(x, batch_idx)
-            # if batch_idx % 5 == 0:
-            # else:
-            #     return None
 
     def configure_optimizers(self):
         lr = self.conf.trainer.learning_rate
@@ -177,23 +177,29 @@ def _gradient_penalty(x, descriminator, layers, alpha):
     of the critic with respect to each sample point.
     """
     batch_size = x.size(0)
+    x.requires_grad = True
 
     # We compute the gradient of the parameters using the regular autograd.
     # The key to making this work is including `create_graph`, this means that the computations
     # in this penalty will be added to the computation graph for the loss function, so that the
     # second partial derivatives will be correctly computed.
-    x.requires_grad = True
     f_x = descriminator(x, layers, alpha)
-    f_x.backward(torch.ones_like(f_x), create_graph=True)
 
-    grad_x_flat = x.grad.view(batch_size, -1)
+    grad = torch.autograd.grad(
+        outputs=f_x,
+        inputs=x,
+        grad_outputs=torch.ones_like(f_x),
+        create_graph=True,
+        only_inputs=True,
+    )[0]
+
+    grad_x_flat = grad.view(batch_size, -1)
     gradient_norm = torch.linalg.norm(grad_x_flat, dim=1)
     gp = torch.pow((gradient_norm - 1.0), 2)
 
     # We must zero the gradient accumulators of the network parameters, to avoid
     # the gradient computation of x in this function affecting the backwards pass of the optimizer.
-    descriminator.zero_grad()
-    x.grad = None
+    # descriminator.zero_grad()
 
     return gp
 
@@ -214,24 +220,3 @@ def _soft_resample(
     x2 = resample(x, r1)
 
     return (1 - alpha) * x1 + alpha * x2
-
-
-"""
-Problems to rule out / how to rull it out
-* Gradient computed correctly in loss
-    * Train a regular WGAN and ensure it converges
-
-* Randomly sampled point correct
-    * Simply set epsilon = 1
-
-* Network arch problem (modules / data / transforms)
-    * use regular convs
-    * Reimplement classical GAN loss and test it again
-
-* Optimizer problem (train as regular GAN)
-
-
-* 
-
-
-"""
