@@ -9,7 +9,7 @@ model:
 
 trainer:
   num_dataloaders: 16
-  learning_rate: 1e-4
+  learning_rate: 1e-3
   epsilon: 1e-6
 
 training_stages:

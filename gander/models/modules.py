@@ -33,7 +33,7 @@ class Generator(nn.Module):
         self.to_rgb = nn.Sequential(
             nn.GroupNorm(num_groups, channels),
             _conv(in_channels=channels, out_channels=3, kernel_size=1, padding=0),
-            nn.Sigmoid(),
+            nn.Tanh(),
         )
 
     def forward(self, x: torch.Tensor, num_layers, weight) -> torch.Tensor:
@@ -55,7 +55,7 @@ class Generator(nn.Module):
         x = _double_resolution(x)
         new_image = self.to_rgb(l(x))
 
-        return (weight) * new_image + (1 - weight) * prev_image
+        return ((weight) * new_image + (1 - weight) * prev_image)
 
 
 class Descriminator(nn.Module):
@@ -76,7 +76,7 @@ class Descriminator(nn.Module):
 
         self.layers = nn.ModuleList(
             [
-                Layer(channels, channels, num_groups)
+                Layer(channels, channels, num_groups, group_norm=False)
                 for _ in range(conf.model.num_layers)
             ]
         )
@@ -124,20 +124,25 @@ class Critic(nn.Module):
 
 
 class Layer(nn.Module):
-    def __init__(self, in_channels, out_channels, num_groups):
+    def __init__(self, in_channels, out_channels, num_groups, group_norm=True):
         super().__init__()
-        self.conv = nn.Sequential(
-            nn.GroupNorm(num_groups, in_channels),
-            _conv(in_channels, out_channels),
-        )
+        if group_norm:
+            self.conv = nn.Sequential(
+                nn.GroupNorm(num_groups, in_channels),
+                _conv(in_channels, out_channels),
+            )
+        else:
+            self.conv = nn.Sequential(
+                _conv(in_channels, out_channels),
+            )
 
     def forward(self, x):
-        return nn.LeakyReLU()(x + self.conv(x))
+        return nn.LeakyReLU()(self.conv(x))
 
 
 def resample(x: torch.Tensor, size: Tuple[int, int]) -> torch.Tensor:
     # TODO(Ross): check align_corners and interpolation mode.
-    return nn.functional.interpolate(x, size=size, mode="bilinear")
+    return nn.functional.interpolate(x, size=size, mode="bilinear", align_corners=False)
 
 
 # TODO(Ross): think about True.

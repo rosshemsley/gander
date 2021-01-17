@@ -70,8 +70,17 @@ class GAN(pl.LightningModule):
         x_hat = _random_sample_line_segment(x_r, x_g)
         gp = _gradient_penalty(x_hat, self.descriminator, layers, alpha)
 
+        # print("x_r", x_r.min(), x_r.max())
+        # print("x_g", x_g.min(), x_g.max())
+
         f_r = self.descriminator(x_r, layers, alpha)
         f_g = self.descriminator(x_g, layers, alpha)
+
+        # print("f_r", f_r.min(), f_r.max())
+        # print("f_g", f_g.min(), f_g.max())
+
+        # print("f_r", f_r.shape)
+        # print("f_g", f_g.shape)
 
         wgan_loss = f_g.mean() - f_r.mean()
         gp_loss = gp.mean()
@@ -79,6 +88,7 @@ class GAN(pl.LightningModule):
         self.log("gp_loss", gp_loss)
         loss = wgan_loss + 10*gp_loss
 
+        self.log("Wasserstein distance estimate", -wgan_loss)
         self.log("descriminator_loss", loss)
 
         if batch_idx % self.stage.batches_between_image_log == 0:
@@ -134,6 +144,9 @@ class GAN(pl.LightningModule):
             return self.descriminator_step(x, batch_idx)
         else:
             return self.generator_step(x, batch_idx)
+            # if batch_idx % 5 == 0:
+            # else:
+                # return None
 
     def configure_optimizers(self):
         lr = self.conf.trainer.learning_rate

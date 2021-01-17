@@ -8,11 +8,11 @@ from torchvision.transforms import (
 )
 from torchvision.datasets import ImageFolder
 
-# MEAN = [0.485, 0.456, 0.406]
-# STD = [0.229, 0.224, 0.225]
+# Normalize data to [-1, 1]
+MEAN = [0.5, 0.5, 0.5]
+STD = [0.5, 0.5, 0.5]
 
-MEAN = [0, 0, 0]
-STD = [1, 1, 1]
+# MEAN = [0, 0, 0]
 
 
 class CelebA(ImageFolder):
@@ -20,7 +20,7 @@ class CelebA(ImageFolder):
         transform = Compose(
             [
                 ToTensor(),
-                # Normalize(mean=MEAN, std=STD),
+                Normalize(mean=MEAN, std=STD),
                 Resize((128, 128)),
                 RandomHorizontalFlip(),
             ]
@@ -29,5 +29,4 @@ class CelebA(ImageFolder):
 
 
 def denormalize(x: torch.Tensor) -> torch.Tensor:
-    return x
-    # return Normalize(mean=[-MEAN[0]/STD[0], -MEAN[1]/STD[1], -MEAN[2]/STD[2]], std=[1/STD[0], 1/STD[1], 1/STD[2]])(x)
+    return Normalize(mean=[-MEAN[0]/STD[0], -MEAN[1]/STD[1], -MEAN[2]/STD[2]], std=[1/STD[0], 1/STD[1], 1/STD[2]])(x)
