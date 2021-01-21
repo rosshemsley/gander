@@ -29,4 +29,7 @@ class CelebA(ImageFolder):
 
 
 def denormalize(x: torch.Tensor) -> torch.Tensor:
-    return Normalize(mean=[-MEAN[0]/STD[0], -MEAN[1]/STD[1], -MEAN[2]/STD[2]], std=[1/STD[0], 1/STD[1], 1/STD[2]])(x)
+    return Normalize(
+        mean=[-MEAN[0] / STD[0], -MEAN[1] / STD[1], -MEAN[2] / STD[2]],
+        std=[1 / STD[0], 1 / STD[1], 1 / STD[2]],
+    )(x)

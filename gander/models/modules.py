@@ -55,7 +55,7 @@ class Generator(nn.Module):
         x = _double_resolution(x)
         new_image = self.to_rgb(l(x))
 
-        return ((weight) * new_image + (1 - weight) * prev_image)
+        return (weight) * new_image + (1 - weight) * prev_image
 
 
 class Descriminator(nn.Module):
@@ -91,7 +91,7 @@ class Descriminator(nn.Module):
             return self.critic(x)
 
         l = self.layers[num_layers - 1]
-        
+
         x = (weight) * _half_resolution(l(x)) + (1 - weight) * prev_x
 
         for i, l in reversed(list(enumerate(self.layers[0 : num_layers - 1]))):

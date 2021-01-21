@@ -25,7 +25,7 @@ def test_gradient_penalty_loss():
     assert params[0] == 5
 
     x_hat = torch.tensor([[3.0, -2.0], [5.0, 7.0]])
-    gp = _gradient_penalty(x_hat, descriminator, None, None)
+    gp, _ = _gradient_penalty(x_hat, descriminator, None, None)
 
     # ∂f/∂x = θ * 2 * x = 5.0 * 2 * [[3.0, -2.0], [5.0, 7.0]] = [[30.0, -20.0], [50.0, 70.0]]
     # |∂f/∂x| = [[(30.0**2 + -20.0**2)^0.5], [(50.0**2 + 70.0**2)^0.5]] = [[36.05551], [86.0233]]

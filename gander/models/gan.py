@@ -62,7 +62,7 @@ class GAN(pl.LightningModule):
         Takes a real sample from the data distribution, x_r, computes the critic loss.
         """
         layers = self.stage.num_layers
-        alpha = min(5*self.stage.progress, 1.0)
+        alpha = min(5 * self.stage.progress, 1.0)
         batch_size = x_r.size(0)
 
         z = self.random_latent_vectors(batch_size).type_as(x_r)
@@ -78,7 +78,7 @@ class GAN(pl.LightningModule):
         gp_loss = gp.mean()
         self.log("wgan_loss", wgan_loss)
         self.log("gp_loss", gp_loss)
-        loss = wgan_loss + 10*gp_loss
+        loss = wgan_loss + 10 * gp_loss
 
         self.log("Wasserstein distance estimate", -wgan_loss)
         self.log("descriminator_loss", loss)
@@ -93,14 +93,18 @@ class GAN(pl.LightningModule):
                 "images.train", grid_r, self.trainer.global_step
             )
 
-            self.logger.experiment.add_histogram("input hist", x_r, self.trainer.global_step)
-            self.logger.experiment.add_histogram("grad hist", grad, self.trainer.global_step)
+            self.logger.experiment.add_histogram(
+                "input hist", x_r, self.trainer.global_step
+            )
+            self.logger.experiment.add_histogram(
+                "grad hist", grad, self.trainer.global_step
+            )
 
         return loss
 
     def generator_step(self, x, batch_idx):
         layers = self.stage.num_layers
-        alpha = min(5*self.stage.progress, 1.0)
+        alpha = min(5 * self.stage.progress, 1.0)
         batch_size = x.size(0)
 
         latent_vectors = self.random_latent_vectors(batch_size).type_as(x)
