@@ -1,8 +1,8 @@
 """
 TODO(Ross): Ideas for improvement
-* label smoothing
 * add semantic labels! (conditional GAN)
 * add std deviation computation to create more diversity
+* StyleGAN
 """
 
 import math
@@ -205,10 +205,6 @@ def _gradient_penalty(x, descriminator, layers, alpha):
     grad_x_flat = grad.view(batch_size, -1)
     gradient_norm = torch.linalg.norm(grad_x_flat, dim=1)
     gp = torch.pow((gradient_norm - 1.0), 2)
-
-    # We must zero the gradient accumulators of the network parameters, to avoid
-    # the gradient computation of x in this function affecting the backwards pass of the optimizer.
-    # descriminator.zero_grad()
 
     return gp, grad
 
