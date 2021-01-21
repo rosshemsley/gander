@@ -1,10 +1,8 @@
 # 🙎‍♂️ gander
-_Let's try playing with GANs - a WGAN-gp with a focus on simplicity_
+_Let's play with GANs - a WGAN-gp with a focus on simplicity_
 
 This package contains a toy implementation of WGAN-gp applied to the CelebA dataset using pytorch-lightning.
 We also implement the resolution doubling algorithm proposed by Karras et al. in their _Progressive Growing of Gans_ paper.
-
-This implementation is just a toy, feel free to use it for inspiration.
 
 ![visualization of training the network](example/training.gif)
 
@@ -12,19 +10,21 @@ _Above: a gif showing the output of the network at as training progresses_
 
 ## Install the package
 
-Using Python 3.8.1, and a recent pip.
+Using Python 3.8.1 or later (and a recent pip), you can install this package and all of its requirements directly from Github.
 ```
 pip install git+https://github.com/rosshemsley/gander
 ```
 
-## Train the net
+## 🎓  Training the net
 
-From within the virtualenv - this is strongly recommended.
+From within a virtualenv (this is strongly recommended).
 ```
 $ train --root-dir /path/to/dir/containing/celba/dataset
 ```
 
-## 🌄 Generate a gif from training
+This is just a shortcut for `python -m gander.cli.train`.
+
+## 🌄  Generate a gif from training
 
 The demo gif included in this readme was generated using a bundled CLI tool as follows
 
