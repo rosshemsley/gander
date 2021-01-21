@@ -45,7 +45,7 @@ class Generator(nn.Module):
         if num_layers == 0:
             return self.to_rgb(x)
 
-        for l in self.layers[: num_layers - 1]:
+        for i, l in enumerate(self.layers[: num_layers - 1]):
             x = _double_resolution(x)
             x = l(x)
 
@@ -76,16 +76,12 @@ class Descriminator(nn.Module):
 
         self.layers = nn.ModuleList(
             [
-                Layer(channels, channels, num_groups, group_norm=False)
+                Layer(channels, channels, num_groups)
                 for _ in range(conf.model.num_layers)
             ]
         )
 
         self.critic = Critic(conf)
-
-        # clip_value = 0.01
-        # for p in self.parameters():
-        #     p.register_hook(lambda grad: torch.clamp(grad, -clip_value, clip_value))
 
     def forward(self, x: torch.Tensor, num_layers, weight) -> torch.Tensor:
         prev_x = self.from_rgb(_half_resolution(x))
@@ -95,9 +91,10 @@ class Descriminator(nn.Module):
             return self.critic(x)
 
         l = self.layers[num_layers - 1]
+        
         x = (weight) * _half_resolution(l(x)) + (1 - weight) * prev_x
 
-        for l in reversed(self.layers[0 : num_layers - 1]):
+        for i, l in reversed(list(enumerate(self.layers[0 : num_layers - 1]))):
             x = l(x)
             x = _half_resolution(x)
 
@@ -115,6 +112,8 @@ class Critic(nn.Module):
         self.critic = nn.Sequential(
             nn.Linear(resolution[0] * resolution[1] * channels, fc_layers),
             nn.LeakyReLU(),
+            nn.Linear(fc_layers, fc_layers),
+            nn.LeakyReLU(),
             nn.Linear(fc_layers, 1),
         )
 
@@ -124,28 +123,22 @@ class Critic(nn.Module):
 
 
 class Layer(nn.Module):
-    def __init__(self, in_channels, out_channels, num_groups, group_norm=True):
+    def __init__(self, in_channels, out_channels, num_groups):
         super().__init__()
-        if group_norm:
-            self.conv = nn.Sequential(
-                nn.GroupNorm(num_groups, in_channels),
-                _conv(in_channels, out_channels),
-            )
-        else:
-            self.conv = nn.Sequential(
-                _conv(in_channels, out_channels),
-            )
+        self.conv = nn.Sequential(
+            nn.GroupNorm(num_groups, in_channels),
+            _conv(in_channels, out_channels),
+        )
 
     def forward(self, x):
         return nn.LeakyReLU()(self.conv(x))
 
 
 def resample(x: torch.Tensor, size: Tuple[int, int]) -> torch.Tensor:
-    # TODO(Ross): check align_corners and interpolation mode.
-    return nn.functional.interpolate(x, size=size, mode="bilinear", align_corners=False)
+    return nn.functional.interpolate(x, size=size, mode="bilinear", align_corners=True)
 
 
-# TODO(Ross): think about True.
+# TODO(Ross): think about bias
 def _conv(
     in_channels: int, out_channels: int, kernel_size=3, padding=1, stride=1, bias=True
 ):

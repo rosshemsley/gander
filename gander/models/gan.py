@@ -5,6 +5,8 @@ TODO(Ross): Ideas for improvement
 * add std deviation computation to create more diversity
 """
 
+import math
+
 from typing import Tuple
 import torch.nn as nn
 import torch
@@ -29,7 +31,6 @@ class GAN(pl.LightningModule):
         self.descriminator = Descriminator(conf)
 
         self.stage = None
-        self.total_steps_taken = 0
 
     def forward(self, latent_vectors):
         return self.generator(latent_vectors, self.conf.model.num_layers, 1.0)
@@ -61,26 +62,17 @@ class GAN(pl.LightningModule):
         Takes a real sample from the data distribution, x_r, computes the critic loss.
         """
         layers = self.stage.num_layers
-        alpha = self.stage.progress
+        alpha = min(5*self.stage.progress, 1.0)
         batch_size = x_r.size(0)
 
         z = self.random_latent_vectors(batch_size).type_as(x_r)
         x_g = self.generator(z, layers, alpha)
 
         x_hat = _random_sample_line_segment(x_r, x_g)
-        gp = _gradient_penalty(x_hat, self.descriminator, layers, alpha)
-
-        # print("x_r", x_r.min(), x_r.max())
-        # print("x_g", x_g.min(), x_g.max())
+        gp, grad = _gradient_penalty(x_hat, self.descriminator, layers, alpha)
 
         f_r = self.descriminator(x_r, layers, alpha)
         f_g = self.descriminator(x_g, layers, alpha)
-
-        # print("f_r", f_r.min(), f_r.max())
-        # print("f_g", f_g.min(), f_g.max())
-
-        # print("f_r", f_r.shape)
-        # print("f_g", f_g.shape)
 
         wgan_loss = f_g.mean() - f_r.mean()
         gp_loss = gp.mean()
@@ -95,17 +87,20 @@ class GAN(pl.LightningModule):
             grid_g = torchvision.utils.make_grid(denormalize(x_g[0:20]), nrow=4)
             grid_r = torchvision.utils.make_grid(denormalize(x_r[0:20]), nrow=4)
             self.logger.experiment.add_image(
-                "images.generated", grid_g, self.total_steps_taken
+                "images.generated", grid_g, self.trainer.global_step
             )
             self.logger.experiment.add_image(
-                "images.train", grid_r, self.total_steps_taken
+                "images.train", grid_r, self.trainer.global_step
             )
+
+            self.logger.experiment.add_histogram("input hist", x_r, self.trainer.global_step)
+            self.logger.experiment.add_histogram("grad hist", grad, self.trainer.global_step)
 
         return loss
 
     def generator_step(self, x, batch_idx):
         layers = self.stage.num_layers
-        alpha = self.stage.progress
+        alpha = min(5*self.stage.progress, 1.0)
         batch_size = x.size(0)
 
         latent_vectors = self.random_latent_vectors(batch_size).type_as(x)
@@ -132,7 +127,7 @@ class GAN(pl.LightningModule):
         batch_size = self.stage.batch_size
 
         x, _ = batch
-        x = _soft_resample(x, alpha, _image_resolution(self.conf, layers))
+        x = resample(x, _image_resolution(self.conf, layers))
 
         self.log("stage_progress", alpha * 100, prog_bar=True)
         self.log("stage.percent_complete", alpha * 100)
@@ -140,22 +135,19 @@ class GAN(pl.LightningModule):
         self.log("batch_size", batch_size)
 
         if optimizer_idx == 0:
-            self.total_steps_taken += 1
             return self.descriminator_step(x, batch_idx)
         else:
-            return self.generator_step(x, batch_idx)
-            # if batch_idx % 5 == 0:
-            # else:
-                # return None
+            if batch_idx % 5 == 0:
+                return self.generator_step(x, batch_idx)
+            else:
+                return None
 
     def configure_optimizers(self):
         lr = self.conf.trainer.learning_rate
         adam_epsilon = self.conf.trainer.epsilon
         return [
-            # RMSprop since the critic tends not to be stationary (see WGAN paper)
-            # torch.optim.RMSprop(self.descriminator.parameters(), lr=0.001),
-            torch.optim.Adam(self.descriminator.parameters(), lr=lr),
-            torch.optim.Adam(self.generator.parameters(), lr=lr),
+            torch.optim.Adam(self.descriminator.parameters(), lr=lr, betas=(0.0, 0.9)),
+            torch.optim.Adam(self.generator.parameters(), lr=lr, betas=(0.0, 0.9)),
         ]
 
 
@@ -214,7 +206,7 @@ def _gradient_penalty(x, descriminator, layers, alpha):
     # the gradient computation of x in this function affecting the backwards pass of the optimizer.
     # descriminator.zero_grad()
 
-    return gp
+    return gp, grad
 
 
 def _unif(batch_size):
