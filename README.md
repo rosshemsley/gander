@@ -24,6 +24,18 @@ $ train --root-dir /path/to/dir/containing/celba/dataset
 
 This is just a shortcut for `python -m gander.cli.train`.
 
+## 🙎‍♂️  Generate an image using the model
+
+A small CLI to print an image to the terminal is provided (works with terminals
+that support the imgcat protocol). 
+
+From within a virtualenv with gander installed
+```
+$ generate --model-checkpoint /path/to/model/checkpoint
+```
+Prints an image directly to terminal.
+
+
 ## 🌄  Generate a gif from training
 
 The demo gif included in this readme was generated using a bundled CLI tool as follows
