@@ -32,8 +32,8 @@ class GAN(pl.LightningModule):
 
         self.stage = None
 
-    def forward(self, latent_vectors):
-        return self.generator(latent_vectors, self.conf.model.num_layers, 1.0)
+    def forward(self, latent_vectors, num_layers: int):
+        return denormalize(self.generator(latent_vectors, num_layers, 1.0))[0]
 
     def set_current_stage(self, stage: Stage):
         print("Setting training stage", stage)

@@ -10,7 +10,7 @@ version = "0.11.0"
 six = "*"
 
 [[package]]
-category = "main"
+category = "dev"
 description = "A small Python module for determining appropriate platform-specific dirs, e.g. a \"user data dir\"."
 name = "appdirs"
 optional = false
@@ -40,7 +40,7 @@ tests = ["coverage (>=5.0.2)", "hypothesis", "pympler", "pytest (>=4.3.0)", "six
 tests_no_zope = ["coverage (>=5.0.2)", "hypothesis", "pympler", "pytest (>=4.3.0)", "six"]
 
 [[package]]
-category = "main"
+category = "dev"
 description = "The uncompromising code formatter."
 name = "black"
 optional = false
@@ -194,6 +194,17 @@ version = "2.10"
 
 [[package]]
 category = "main"
+description = "imgcat as Python API and CLI"
+name = "imgcat"
+optional = false
+python-versions = "*"
+version = "0.5.0"
+
+[package.extras]
+test = ["pytest (<5.0)", "numpy", "torch", "torchvision", "tensorflow (>=2.0)", "matplotlib (>=3.1)", "pillow"]
+
+[[package]]
+category = "main"
 description = "Python implementation of Markdown."
 name = "markdown"
 optional = false
@@ -213,7 +224,7 @@ python-versions = ">=3.5"
 version = "8.6.0"
 
 [[package]]
-category = "main"
+category = "dev"
 description = "Experimental type system extensions for programs checked with the mypy typechecker."
 name = "mypy-extensions"
 optional = false
@@ -265,7 +276,7 @@ version = "20.8"
 pyparsing = ">=2.0.2"
 
 [[package]]
-category = "main"
+category = "dev"
 description = "Utility library for gitignore style pattern matching of file paths."
 name = "pathspec"
 optional = false
@@ -401,7 +412,7 @@ python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*, !=3.4.*"
 version = "5.3.1"
 
 [[package]]
-category = "main"
+category = "dev"
 description = "Alternative regular expression module, to replace re."
 name = "regex"
 optional = false
@@ -496,7 +507,7 @@ python-versions = "*"
 version = "1.7.0"
 
 [[package]]
-category = "main"
+category = "dev"
 description = "Python Library for Tom's Obvious, Minimal Language"
 name = "toml"
 optional = false
@@ -544,7 +555,7 @@ dev = ["py-make (>=0.1.0)", "twine", "wheel"]
 telegram = ["requests"]
 
 [[package]]
-category = "main"
+category = "dev"
 description = "a fork of Python 2 and 3 ast modules with type comment support"
 name = "typed-ast"
 optional = false
@@ -605,7 +616,7 @@ version = "0.36.2"
 test = ["pytest (>=3.0.0)", "pytest-cov"]
 
 [metadata]
-content-hash = "544cba7a0a01c78fb9bc73829360c8c0031539d159c426b3264c9d2d9080875a"
+content-hash = "844e03a9c16be773f77e75fcb5f7dc0c324847ab8abf6daf02d8100f5383355b"
 python-versions = "^3.8.1"
 
 [metadata.files]
@@ -714,6 +725,9 @@ grpcio = [
 idna = [
     {file = "idna-2.10-py2.py3-none-any.whl", hash = "sha256:b97d804b1e9b523befed77c48dacec60e6dcb0b5391d57af6a65a312a90648c0"},
     {file = "idna-2.10.tar.gz", hash = "sha256:b307872f855b18632ce0c21c5e45be78c0ea7ae4c15c828c20788b26921eb3f6"},
+]
+imgcat = [
+    {file = "imgcat-0.5.0.tar.gz", hash = "sha256:a6261bd3c766b1761a146d6e7209fb54620691b31057d0c050b96a761293cfe0"},
 ]
 markdown = [
     {file = "Markdown-3.3.3-py3-none-any.whl", hash = "sha256:c109c15b7dc20a9ac454c9e6025927d44460b85bd039da028d85e2b6d0bcc328"},
