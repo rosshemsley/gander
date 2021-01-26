@@ -3,6 +3,8 @@ import click
 from imgcat import imgcat
 import torchvision
 
+from gander.models import GAN
+
 TRUNCATE_LATENT_VECTOR = 2.0
 
 
